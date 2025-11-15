@@ -35,6 +35,9 @@ app.get('/health', (_req, res) => {
 // Initialize game engine
 const gameEngine = new GameEngine(io);
 
+// Import and setup REST API routes (will be done after engine initialization)
+import { setupCharacterRoutes } from './api/character-routes.js';
+
 // WebSocket connection handling
 io.on('connection', (socket) => {
   console.info(`Client connected: ${socket.id}`);
@@ -101,9 +104,13 @@ async function startServer(): Promise<void> {
     await gameEngine.initialize();
     console.info('✅ Game engine initialized');
 
+    // Setup REST API routes (character manager is now available)
+    setupCharacterRoutes(app, gameEngine.characterManager);
+
     httpServer.listen(PORT, () => {
       console.info(`🎮 Silt MUD Server running on port ${PORT}`);
       console.info('📡 WebSocket server ready');
+      console.info('🌐 REST API: /api/accounts/:username/characters');
       console.info('🌍 World loaded from database with 5 rooms');
       console.info('⚔️  Iteration 1: Combat & Items ready!');
     });

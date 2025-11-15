@@ -1,9 +1,13 @@
 /**
- * Zod schemas for database JSON fields
- * Provides type-safe parsing without `as` casts
+ * Zod schemas for database validation
+ * Uses auto-generated schemas from Prisma + custom JSON field schemas
  */
 
 import { z } from 'zod';
+import { CharacterSchema, ItemSchema, RoomSchema } from './generated/index.js';
+
+// Re-export generated schemas for convenience
+export { CharacterSchema, ItemSchema, RoomSchema };
 
 /**
  * Schema for room exits JSON
@@ -18,12 +22,28 @@ export type RoomExitsData = z.infer<typeof roomExitsSchema>;
  * Example: { damage: 10, defense: 5, healing: 50 }
  */
 export const itemStatsSchema = z.object({
-  damage: z.number().optional(),
-  defense: z.number().optional(),
-  healing: z.number().optional(),
+  damage: z.number().int().min(0).optional(),
+  defense: z.number().int().min(0).optional(),
+  healing: z.number().int().min(0).optional(),
 });
 
 export type ItemStatsData = z.infer<typeof itemStatsSchema>;
+
+/**
+ * Enhanced Room schema with parsed exits
+ */
+export const RoomWithParsedExitsSchema = RoomSchema.transform((room) => ({
+  ...room,
+  exits: parseRoomExits(room.exitsJson),
+}));
+
+/**
+ * Enhanced Item schema with parsed stats
+ */
+export const ItemWithParsedStatsSchema = ItemSchema.transform((item) => ({
+  ...item,
+  stats: parseItemStats(item.statsJson),
+}));
 
 /**
  * Parse room exits with validation

@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { glob } from 'glob';
 
 const MAX_LINES = 300;
-const files = glob.sync('packages/**/src/**/*.{ts,tsx}');
+const files = glob.sync('packages/**/src/**/*.{ts,tsx}', {
+  ignore: ['**/node_modules/**', '**/dist/**', '**/database/generated/**'],
+});
 
 const violations = [];
 

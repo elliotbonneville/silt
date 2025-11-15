@@ -3,19 +3,17 @@
  * Displays existing characters and allows creating new ones
  */
 
-import type { Character, CharacterListItem } from '@silt/shared';
 import { useCallback, useEffect, useState } from 'react';
-import type { Socket } from 'socket.io-client';
+import type { CharacterListItem } from '../api/client.js';
+import * as api from '../api/client.js';
 
 interface CharacterSelectProps {
-  socket: Socket;
-  username: string;
-  onCharacterSelected: (character: Character) => void;
+  accountId: string;
+  onCharacterSelected: (characterId: string) => void;
 }
 
 export function CharacterSelect({
-  socket,
-  username,
+  accountId,
   onCharacterSelected,
 }: CharacterSelectProps): JSX.Element {
   const [characters, setCharacters] = useState<CharacterListItem[]>([]);
@@ -23,66 +21,46 @@ export function CharacterSelect({
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newCharacterName, setNewCharacterName] = useState('');
   const [creating, setCreating] = useState(false);
-  const [selecting, setSelecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const loadCharacters = useCallback((): void => {
-    socket.emit(
-      'character:list',
-      { username },
-      (response: { success: boolean; characters?: CharacterListItem[]; error?: string }) => {
-        setLoading(false);
-        if (response.success && response.characters) {
-          setCharacters(response.characters);
-          if (response.characters.length === 0) {
-            setShowCreateForm(true);
-          }
-        } else {
-          console.error('Failed to load characters:', response.error);
-        }
-      },
-    );
-  }, [socket, username]);
+  const loadCharacters = useCallback(async (): Promise<void> => {
+    try {
+      const chars = await api.listCharacters(accountId);
+      setCharacters(chars);
+      if (chars.length === 0) {
+        setShowCreateForm(true);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load characters');
+    } finally {
+      setLoading(false);
+    }
+  }, [accountId]);
 
   useEffect(() => {
     loadCharacters();
   }, [loadCharacters]);
 
-  const handleCreateCharacter = (): void => {
+  const handleCreateCharacter = async (): Promise<void> => {
     if (!newCharacterName.trim() || creating) return;
 
     setCreating(true);
-    socket.emit(
-      'character:create',
-      { username, name: newCharacterName.trim() },
-      (response: { success: boolean; character?: Character; error?: string }) => {
-        setCreating(false);
-        if (response.success && response.character) {
-          setNewCharacterName('');
-          setShowCreateForm(false);
-          loadCharacters();
-        } else {
-          console.error('Failed to create character:', response.error);
-        }
-      },
-    );
+    setError(null);
+
+    try {
+      await api.createCharacter(accountId, newCharacterName.trim());
+      setNewCharacterName('');
+      setShowCreateForm(false);
+      await loadCharacters();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create character');
+    } finally {
+      setCreating(false);
+    }
   };
 
   const handleSelectCharacter = (characterId: string): void => {
-    if (selecting) return;
-
-    setSelecting(true);
-    socket.emit(
-      'character:select',
-      { characterId },
-      (response: { success: boolean; character?: Character; error?: string }) => {
-        setSelecting(false);
-        if (response.success && response.character) {
-          onCharacterSelected(response.character);
-        } else {
-          console.error('Failed to select character:', response.error);
-        }
-      },
-    );
+    onCharacterSelected(characterId);
   };
 
   if (loading) {
@@ -102,6 +80,9 @@ export function CharacterSelect({
         <h1 className="mb-6 text-center text-3xl font-bold text-green-400">Silt MUD</h1>
         <h2 className="mb-6 text-center text-xl text-gray-300">Select Character</h2>
 
+        {/* Error message */}
+        {error && <div className="mb-4 rounded bg-red-900 p-3 text-sm text-white">{error}</div>}
+
         {/* Character List */}
         {characters.length > 0 && (
           <div className="mb-6 space-y-2">
@@ -110,7 +91,7 @@ export function CharacterSelect({
                 key={char.id}
                 type="button"
                 onClick={() => handleSelectCharacter(char.id)}
-                disabled={!char.isAlive || selecting}
+                disabled={!char.isAlive}
                 className={`w-full rounded border p-4 text-left transition-colors ${
                   char.isAlive
                     ? 'border-gray-600 bg-gray-900 hover:border-green-400 hover:bg-gray-800'
@@ -133,7 +114,7 @@ export function CharacterSelect({
                       )}
                     </div>
                   </div>
-                  {char.isAlive && <div className="text-green-400">{selecting ? '...' : '→'}</div>}
+                  {char.isAlive && <div className="text-green-400">→</div>}
                 </div>
               </button>
             ))}

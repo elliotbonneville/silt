@@ -16,7 +16,7 @@ import { World } from './world.js';
 
 export class GameEngine {
   private readonly world: World;
-  private readonly characterManager: CharacterManager;
+  readonly characterManager: CharacterManager;
   private readonly actorRegistry: ActorRegistry;
   private roomGraph!: RoomGraph;
   private eventPropagator!: EventPropagator;

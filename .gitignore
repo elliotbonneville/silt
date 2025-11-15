@@ -17,6 +17,10 @@ out/
 *.db-journal
 dev.db
 
+# Generated code
+packages/server/src/database/generated/
+packages/server/openapi.json
+
 # Logs
 logs/
 *.log
