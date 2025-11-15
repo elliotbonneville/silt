@@ -1,0 +1,27 @@
+{
+  "name": "@silt/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@silt/shared": "file:../shared",
+    "express": "^4.21.0",
+    "socket.io": "^4.8.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "nanoid": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/cors": "^2.8.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0"
+  }
+}

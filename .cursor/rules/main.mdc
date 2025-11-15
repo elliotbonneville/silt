@@ -28,7 +28,7 @@ We're building a **living, multiplayer world** with AI agents, real-time combat,
 - **Biome for all linting/formatting** - NO ESLint, NO Prettier
 - **80% test coverage minimum** - 95% on critical paths (combat, AI, commands)
 - **Small commits** - 50-100 lines, one logical change
-- **Pre-commit validation** - All checks must pass
+- **Pre-commit validation** - All checks must pass: do not EVER commit with --no-verify
 
 ---
 
@@ -277,7 +277,15 @@ console.log('✅ All files under 300 lines');
 3. Related tests pass
 4. All files under 300 lines
 
-**NEVER use `--no-verify`** except emergency hotfix (document why in message)
+**ABSOLUTELY NEVER commit with `--no-verify` or `--no-hooks`. ZERO EXCEPTIONS.**
+
+If pre-commit validation fails:
+1. Fix the linting errors
+2. Fix the TypeScript errors  
+3. Fix the failing tests
+4. Split files over 300 lines
+
+DO NOT bypass validation. Bypassing hooks is how bugs reach production and data gets corrupted.
 
 ---
 

@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+
+# Run all validation checks before commit
+npm run lint
+npm run type-check
+npm run check-file-size
+npm run check-unused-exports

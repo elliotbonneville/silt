@@ -1,0 +1,46 @@
+{
+  "name": "silt",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Modern MUD with AI agents - A text-based multiplayer game with intelligent NPCs",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
+    "dev:server": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "build": "npm run build -w server && npm run build -w client",
+    "build:server": "npm run build -w server",
+    "build:client": "npm run build -w client",
+    "lint": "biome check .",
+    "lint:fix": "biome check --apply .",
+    "format": "biome format --write .",
+    "type-check": "tsc --noEmit -p packages/server && tsc --noEmit -p packages/client && tsc --noEmit -p packages/shared",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "check-file-size": "node scripts/check-file-size.js",
+    "check-unused-exports": "ts-unused-exports tsconfig.json --ignoreProductionFiles",
+    "check-all": "npm run lint && npm run type-check && npm run check-file-size && npm run check-unused-exports"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.0.0",
+    "concurrently": "^9.0.0",
+    "glob": "^11.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "ts-unused-exports": "^10.1.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0",
+    "@vitest/coverage-v8": "^2.0.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": ["biome check --write", "vitest related --run"],
+    "*.{json,md}": ["biome format --write"]
+  },
+  "prepare": "husky || true",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

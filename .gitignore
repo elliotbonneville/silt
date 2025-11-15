@@ -39,6 +39,9 @@ lerna-debug.log*
 *.sqlite
 *.sqlite3
 *.db
+dev.db
+dev.db-journal
+prisma/migrations/
 
 # TypeScript
 *.tsbuildinfo
