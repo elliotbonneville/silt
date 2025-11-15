@@ -1,0 +1,127 @@
+// Prisma schema for Silt MUD
+// Database: SQLite for Iteration 1-2, PostgreSQL for Iteration 3+
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Account model (stub for Phase II - auth)
+model Account {
+  id        String      @id @default(cuid())
+  username  String      @unique
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  
+  characters Character[]
+  
+  @@map("accounts")
+}
+
+// Character model - players create characters that can die permanently
+model Character {
+  id            String   @id @default(cuid())
+  name          String
+  accountId     String?
+  currentRoomId String
+  spawnRoomId   String   // Where they respawn/started
+  
+  // Stats
+  hp            Int      @default(100)
+  maxHp         Int      @default(100)
+  attackPower   Int      @default(10)
+  defense       Int      @default(5)
+  
+  // State
+  isAlive       Boolean  @default(true)
+  isDead        Boolean  @default(false) // Redundant but explicit for queries
+  lastActionAt  DateTime @default(now())
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  diedAt        DateTime?
+  
+  account       Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  inventory     Item[]
+  
+  @@index([accountId])
+  @@index([isAlive])
+  @@index([currentRoomId])
+  @@map("characters")
+}
+
+// Room model - game world locations
+model Room {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  
+  // Map stored as JSON: { "north": "room-id", "east": "room-id" }
+  exitsJson   String   @default("{}")
+  
+  // Metadata
+  isStarting  Boolean  @default(false)
+  createdBy   String?  // AccountId for admin tracking
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  items       Item[]
+  
+  @@index([isStarting])
+  @@map("rooms")
+}
+
+// Item model - weapons, armor, consumables, etc.
+model Item {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  itemType    String   // 'weapon' | 'armor' | 'consumable' | 'misc'
+  
+  // Stats (JSON: { damage?: number, defense?: number, healing?: number })
+  statsJson   String   @default("{}")
+  
+  // Location - either in a room or character's inventory
+  roomId      String?
+  characterId String?
+  
+  // Equipment state
+  isEquipped  Boolean  @default(false)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  room        Room?      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  character   Character? @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  
+  @@index([roomId])
+  @@index([characterId])
+  @@map("items")
+}
+
+// GameEvent model - comprehensive event log for debugging and replay
+model GameEvent {
+  id            String   @id @default(cuid())
+  type          String   // Event type: movement, combat, speech, etc.
+  timestamp     DateTime @default(now())
+  originRoomId  String
+  
+  // Event content
+  content       String?
+  dataJson      String?  // Flexible metadata as JSON
+  
+  // Visibility
+  visibility    String   // 'room' | 'global' | 'private'
+  attenuated    Boolean  @default(false)
+  
+  @@index([timestamp])
+  @@index([type])
+  @@index([originRoomId])
+  @@map("game_events")
+}
+

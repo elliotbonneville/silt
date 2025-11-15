@@ -1,0 +1,150 @@
+/**
+ * Item repository - database operations for items
+ */
+
+import type { Item } from '@prisma/client';
+import type { CharacterId, ItemId, RoomId } from '@silt/shared';
+import { prisma } from './client.js';
+import { type ItemStatsData, parseItemStats } from './schemas.js';
+
+export interface CreateItemInput {
+  readonly name: string;
+  readonly description: string;
+  readonly itemType: 'weapon' | 'armor' | 'consumable' | 'misc';
+  readonly stats?: ItemStatsData;
+  readonly roomId?: RoomId;
+  readonly characterId?: CharacterId;
+}
+
+/**
+ * Create a new item
+ */
+export async function createItem(input: CreateItemInput): Promise<Item> {
+  const data: {
+    name: string;
+    description: string;
+    itemType: string;
+    statsJson: string;
+    roomId?: string;
+    characterId?: string;
+  } = {
+    name: input.name,
+    description: input.description,
+    itemType: input.itemType,
+    statsJson: JSON.stringify(input.stats ?? {}),
+  };
+
+  if (input.roomId !== undefined) {
+    data.roomId = input.roomId;
+  }
+
+  if (input.characterId !== undefined) {
+    data.characterId = input.characterId;
+  }
+
+  return await prisma.item.create({ data });
+}
+
+/**
+ * Find item by ID
+ */
+export async function findItemById(id: ItemId): Promise<Item | null> {
+  return await prisma.item.findUnique({
+    where: { id },
+  });
+}
+
+/**
+ * Find items in a room
+ */
+export async function findItemsInRoom(roomId: RoomId): Promise<Item[]> {
+  return await prisma.item.findMany({
+    where: { roomId },
+    orderBy: { name: 'asc' },
+  });
+}
+
+/**
+ * Find items in character inventory
+ */
+export async function findItemsInInventory(characterId: CharacterId): Promise<Item[]> {
+  return await prisma.item.findMany({
+    where: { characterId },
+    orderBy: { name: 'asc' },
+  });
+}
+
+/**
+ * Find equipped items for a character
+ */
+export async function findEquippedItems(characterId: CharacterId): Promise<Item[]> {
+  return await prisma.item.findMany({
+    where: {
+      characterId,
+      isEquipped: true,
+    },
+  });
+}
+
+/**
+ * Move item to character inventory
+ */
+export async function moveItemToInventory(itemId: ItemId, characterId: CharacterId): Promise<Item> {
+  return await prisma.item.update({
+    where: { id: itemId },
+    data: {
+      characterId,
+      roomId: null,
+    },
+  });
+}
+
+/**
+ * Move item to room
+ */
+export async function moveItemToRoom(itemId: ItemId, roomId: RoomId): Promise<Item> {
+  return await prisma.item.update({
+    where: { id: itemId },
+    data: {
+      roomId,
+      characterId: null,
+      isEquipped: false,
+    },
+  });
+}
+
+/**
+ * Equip item
+ */
+export async function equipItem(itemId: ItemId): Promise<Item> {
+  return await prisma.item.update({
+    where: { id: itemId },
+    data: { isEquipped: true },
+  });
+}
+
+/**
+ * Unequip item
+ */
+export async function unequipItem(itemId: ItemId): Promise<Item> {
+  return await prisma.item.update({
+    where: { id: itemId },
+    data: { isEquipped: false },
+  });
+}
+
+/**
+ * Delete item
+ */
+export async function deleteItem(itemId: ItemId): Promise<void> {
+  await prisma.item.delete({
+    where: { id: itemId },
+  });
+}
+
+/**
+ * Get item stats as typed object
+ */
+export function getItemStats(item: Item): ItemStatsData {
+  return parseItemStats(item.statsJson);
+}

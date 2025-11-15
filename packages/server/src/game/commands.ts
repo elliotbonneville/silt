@@ -22,8 +22,8 @@ export interface CommandResult {
 /**
  * Parse and execute the 'look' command
  */
-export function executeLookCommand(ctx: CommandContext): CommandResult {
-  const content = ctx.world.getRoomDescription(ctx.player.currentRoomId, ctx.player.name);
+export async function executeLookCommand(ctx: CommandContext): Promise<CommandResult> {
+  const content = await ctx.world.getRoomDescription(ctx.player.currentRoomId, ctx.player.name);
 
   return {
     success: true,
@@ -44,7 +44,10 @@ export function executeLookCommand(ctx: CommandContext): CommandResult {
 /**
  * Parse and execute the 'go' command
  */
-export function executeGoCommand(ctx: CommandContext, direction: string): CommandResult {
+export async function executeGoCommand(
+  ctx: CommandContext,
+  direction: string,
+): Promise<CommandResult> {
   const currentRoom = ctx.world.getRoom(ctx.player.currentRoomId);
 
   if (!currentRoom) {
@@ -65,7 +68,7 @@ export function executeGoCommand(ctx: CommandContext, direction: string): Comman
     return { success: false, events: [], error: 'Target room not found' };
   }
 
-  const roomDescription = ctx.world.getRoomDescription(targetRoomId, ctx.player.name);
+  const roomDescription = await ctx.world.getRoomDescription(targetRoomId, ctx.player.name);
 
   return {
     success: true,
@@ -150,7 +153,10 @@ export function executeShoutCommand(ctx: CommandContext, message: string): Comma
 /**
  * Parse command string and execute appropriate command
  */
-export function parseAndExecuteCommand(input: string, ctx: CommandContext): CommandResult {
+export async function parseAndExecuteCommand(
+  input: string,
+  ctx: CommandContext,
+): Promise<CommandResult> {
   const trimmed = input.trim();
 
   if (!trimmed) {
@@ -186,21 +192,21 @@ export function parseAndExecuteCommand(input: string, ctx: CommandContext): Comm
   if (command in directionMap) {
     const fullDirection = directionMap[command];
     if (fullDirection) {
-      return executeGoCommand(ctx, fullDirection);
+      return await executeGoCommand(ctx, fullDirection);
     }
   }
 
   switch (command) {
     case 'look':
     case 'l':
-      return executeLookCommand(ctx);
+      return await executeLookCommand(ctx);
 
     case 'go':
     case 'move':
       if (args.length === 0) {
         return { success: false, events: [], error: 'Go where?' };
       }
-      return executeGoCommand(ctx, args[0] || '');
+      return await executeGoCommand(ctx, args[0] || '');
 
     case 'say':
       return executeSayCommand(ctx, args.join(' '));

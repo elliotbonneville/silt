@@ -1,10 +1,11 @@
 /**
  * World state - manages rooms, actors, and game state
- * For Iteration 0, everything is in-memory (no database)
+ * Iteration 1: Loads from database
  */
 
 import type { RoomId } from '@silt/shared';
 import { createRoomId } from '@silt/shared';
+import { findAllRooms, findItemsInRoom, getRoomExits } from '../database/index.js';
 
 export interface Room {
   readonly id: RoomId;
@@ -16,47 +17,46 @@ export interface Room {
 export class World {
   private rooms = new Map<RoomId, Room>();
   private getPlayersInRoomFn?: (roomId: RoomId) => readonly { name: string }[];
+  private initialized = false;
 
-  constructor() {
-    this.initializeStarterWorld();
+  /**
+   * Load world data from database
+   */
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    const dbRooms = await findAllRooms();
+
+    for (const dbRoom of dbRooms) {
+      const exits = getRoomExits(dbRoom);
+      const exitsMap = new Map<string, RoomId>();
+
+      for (const [direction, roomId] of Object.entries(exits)) {
+        // biome-ignore lint/style/noNonNullAssertion: roomId is always defined in Object.entries
+        exitsMap.set(direction, createRoomId(roomId!));
+      }
+
+      const room: Room = {
+        id: createRoomId(dbRoom.id),
+        name: dbRoom.name,
+        description: dbRoom.description,
+        exits: exitsMap,
+      };
+      this.rooms.set(room.id, room);
+    }
+
+    this.initialized = true;
   }
 
   setPlayerLookupFunction(fn: (roomId: RoomId) => readonly { name: string }[]): void {
     this.getPlayersInRoomFn = fn;
   }
 
-  private initializeStarterWorld(): void {
-    const townId = createRoomId('town-square');
-    const tavernId = createRoomId('tavern');
-    const forestId = createRoomId('forest-path');
-
-    const town: Room = {
-      id: townId,
-      name: 'Town Square',
-      description: 'A bustling town square with a fountain in the center.',
-      exits: new Map([
-        ['north', forestId],
-        ['east', tavernId],
-      ]),
-    };
-
-    const tavern: Room = {
-      id: tavernId,
-      name: 'The Tavern',
-      description: 'A cozy tavern with a warm fireplace.',
-      exits: new Map([['west', townId]]),
-    };
-
-    const forest: Room = {
-      id: forestId,
-      name: 'Forest Path',
-      description: 'A dark forest path leading north into the unknown.',
-      exits: new Map([['south', townId]]),
-    };
-
-    this.rooms.set(townId, town);
-    this.rooms.set(tavernId, tavern);
-    this.rooms.set(forestId, forest);
+  /**
+   * Check if world is initialized
+   */
+  isInitialized(): boolean {
+    return this.initialized;
   }
 
   getRoom(roomId: RoomId): Room | undefined {
@@ -77,9 +77,9 @@ export class World {
   }
 
   /**
-   * Get formatted room description including occupants
+   * Get formatted room description including occupants and items
    */
-  getRoomDescription(roomId: RoomId, excludePlayerName?: string): string {
+  async getRoomDescription(roomId: RoomId, excludePlayerName?: string): Promise<string> {
     const room = this.rooms.get(roomId);
     if (!room) {
       return 'Unknown location';
@@ -91,7 +91,15 @@ export class World {
     const players = this.getPlayersInRoomFn ? this.getPlayersInRoomFn(roomId) : [];
     const otherPlayers = players.filter((p) => p.name !== excludePlayerName).map((p) => p.name);
 
+    // Get items in room
+    const items = await findItemsInRoom(roomId);
+    const itemNames = items.map((item) => item.name);
+
     let description = `${room.name}\n\n${room.description}\n\nExits: ${exits}`;
+
+    if (itemNames.length > 0) {
+      description += `\n\nYou see: ${itemNames.join(', ')}`;
+    }
 
     if (otherPlayers.length > 0) {
       description += `\n\nAlso here: ${otherPlayers.join(', ')}`;

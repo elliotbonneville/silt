@@ -16,13 +16,24 @@ import { World } from './world.js';
 export class GameEngine {
   private readonly world: World;
   private readonly actorRegistry: ActorRegistry;
-  private readonly roomGraph: RoomGraph;
-  private readonly eventPropagator: EventPropagator;
+  private roomGraph!: RoomGraph;
+  private eventPropagator!: EventPropagator;
   private readonly players = new Map<ActorId, Player>();
+  private initialized = false;
 
   constructor(private readonly io: Server) {
     this.world = new World();
     this.actorRegistry = new ActorRegistry();
+  }
+
+  /**
+   * Initialize the game engine - load world from database
+   */
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    // Load world from database
+    await this.world.initialize();
 
     // Set up player lookup for room descriptions
     this.world.setPlayerLookupFunction((roomId) => {
@@ -38,12 +49,18 @@ export class GameEngine {
 
     // Event propagator uses room graph and actor registry
     this.eventPropagator = new EventPropagator(this.roomGraph, this.actorRegistry);
+
+    this.initialized = true;
   }
 
   /**
    * Add a player to the game
    */
-  addPlayer(socketId: string, name: string): Player {
+  async addPlayer(socketId: string, name: string): Promise<Player> {
+    if (!this.initialized) {
+      throw new Error('Game engine not initialized');
+    }
+
     const startingRoomId = this.world.getStartingRoomId();
     const player = createPlayer(name, startingRoomId);
 
@@ -62,7 +79,7 @@ export class GameEngine {
     });
 
     // Send initial room description to the joining player
-    const roomDescription = this.world.getRoomDescription(startingRoomId, player.name);
+    const roomDescription = await this.world.getRoomDescription(startingRoomId, player.name);
 
     this.broadcastEvent(
       {
@@ -108,7 +125,7 @@ export class GameEngine {
   /**
    * Handle a command from a player
    */
-  handleCommand(socketId: string, commandText: string): void {
+  async handleCommand(socketId: string, commandText: string): Promise<void> {
     const actorId = this.actorRegistry.getActorBySocketId(socketId);
     if (!actorId) {
       throw new Error('Player not found');
@@ -124,7 +141,7 @@ export class GameEngine {
       world: this.world,
     };
 
-    const result = parseAndExecuteCommand(commandText, context);
+    const result = await parseAndExecuteCommand(commandText, context);
 
     if (!result.success && result.error) {
       // Send error only to the player who issued the command

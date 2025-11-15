@@ -1,6 +1,6 @@
 /**
  * Server entry point - Express + Socket.io server
- * Iteration 0: Basic multiplayer with room navigation and chat
+ * Iteration 1: Database-backed world with persistence
  */
 
 import { createServer } from 'node:http';
@@ -10,7 +10,7 @@ import express from 'express';
 import { Server } from 'socket.io';
 import { GameEngine } from './game/engine.js';
 
-dotenv.config({ path: '../../.env' });
+dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
@@ -40,9 +40,9 @@ io.on('connection', (socket) => {
   console.info(`Client connected: ${socket.id}`);
 
   // Player joins game
-  socket.on('player:join', (data: { name: string }, callback) => {
+  socket.on('player:join', async (data: { name: string }, callback) => {
     try {
-      const player = gameEngine.addPlayer(socket.id, data.name);
+      const player = await gameEngine.addPlayer(socket.id, data.name);
       const initialRoom = gameEngine.getPlayerRoomState(player.id);
 
       callback({ success: true, player, initialRoom });
@@ -53,9 +53,9 @@ io.on('connection', (socket) => {
   });
 
   // Player sends command
-  socket.on('game:command', (data: { command: string }) => {
+  socket.on('game:command', async (data: { command: string }) => {
     try {
-      gameEngine.handleCommand(socket.id, data.command);
+      await gameEngine.handleCommand(socket.id, data.command);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Command failed';
       socket.emit('game:error', { message });
@@ -72,8 +72,26 @@ io.on('connection', (socket) => {
 const portEnv = process.env['PORT'];
 const PORT = portEnv ? Number.parseInt(portEnv, 10) : 3000;
 
-httpServer.listen(PORT, () => {
-  console.info(`🎮 Silt MUD Server running on port ${PORT}`);
-  console.info('📡 WebSocket server ready');
-  console.info('🌍 Starter world initialized with 3 rooms');
+// Start server after initializing game engine
+async function startServer(): Promise<void> {
+  try {
+    console.info('🔄 Initializing game engine...');
+    await gameEngine.initialize();
+    console.info('✅ Game engine initialized');
+
+    httpServer.listen(PORT, () => {
+      console.info(`🎮 Silt MUD Server running on port ${PORT}`);
+      console.info('📡 WebSocket server ready');
+      console.info('🌍 World loaded from database with 5 rooms');
+      console.info('⚔️  Iteration 1: Combat & Items ready!');
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+startServer().catch((error) => {
+  console.error('Unexpected error during startup:', error);
+  process.exit(1);
 });
