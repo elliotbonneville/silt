@@ -64,14 +64,24 @@ Automatically runs on every commit:
 - Related tests
 - File size check
 
-## Architecture
+## Documentation
+
+**Start here:**
+1. **[docs/DESIGN_PHILOSOPHY.md](docs/DESIGN_PHILOSOPHY.md)** - Why we build this way (read first!)
+2. **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - How the system works
+3. **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)** - Development workflow and commit guidelines
+4. **[docs/PLAN.md](docs/PLAN.md)** - Complete roadmap and iterations
+5. **[.cursor/rules/main.mdc](.cursor/rules/main.mdc)** - Code standards (enforced by tooling)
+
+**New developers: Read in order 1 → 2 → 3.**
+
+## Architecture Highlights
 
 - **Actor-based event propagation** - Events reach players and AI agents based on distance
 - **Range-based broadcasting** - Hear combat from adjacent rooms, shouts from 3 rooms away
 - **Client-agnostic game engine** - Supports text player UI and visual admin UI
 - **AI agents as actors** - NPCs hear events and react using same command system as players
-
-See `PLAN.md` for complete architecture documentation.
+- **No build step** - TypeScript path mappings, instant type checking
 
 ## Current Iteration
 
