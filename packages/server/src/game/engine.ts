@@ -3,26 +3,28 @@
  * Manages world state, actors, and event propagation
  */
 
-import type { ActorId, GameEvent, RoomId, RoomState } from '@silt/shared';
-import { createEventId } from '@silt/shared';
+import type { Character } from '@prisma/client';
+import type { CharacterListItem, GameEvent, RoomState } from '@silt/shared';
+import { nanoid } from 'nanoid';
 import type { Server } from 'socket.io';
 import { ActorRegistry } from './actor-registry.js';
+import { CharacterManager } from './character-manager.js';
 import { type CommandContext, parseAndExecuteCommand } from './commands.js';
 import { EventPropagator } from './event-propagator.js';
-import { createPlayer, type Player } from './player.js';
 import { RoomGraph } from './room-graph.js';
 import { World } from './world.js';
 
 export class GameEngine {
   private readonly world: World;
+  private readonly characterManager: CharacterManager;
   private readonly actorRegistry: ActorRegistry;
   private roomGraph!: RoomGraph;
   private eventPropagator!: EventPropagator;
-  private readonly players = new Map<ActorId, Player>();
   private initialized = false;
 
   constructor(private readonly io: Server) {
     this.world = new World();
+    this.characterManager = new CharacterManager(this.world);
     this.actorRegistry = new ActorRegistry();
   }
 
@@ -39,8 +41,9 @@ export class GameEngine {
     this.world.setPlayerLookupFunction((roomId) => {
       const actorIds = this.actorRegistry.getActorsInRoom(roomId);
       return Array.from(actorIds)
-        .map((id) => this.players.get(id))
-        .filter((p): p is Player => p !== null && p !== undefined);
+        .map((id) => this.characterManager.getCharacter(id))
+        .filter((char) => char !== null && char !== undefined)
+        .map((char) => ({ name: char.name }));
     });
 
     // Build room graph for distance calculations
@@ -54,39 +57,56 @@ export class GameEngine {
   }
 
   /**
-   * Add a player to the game
+   * Get characters for an account
    */
-  async addPlayer(socketId: string, name: string): Promise<Player> {
+  async getCharactersForAccount(accountId: string): Promise<CharacterListItem[]> {
+    return await this.characterManager.getCharactersForAccount(accountId);
+  }
+
+  /**
+   * Create a new character
+   */
+  async createNewCharacter(accountId: string, name: string): Promise<Character> {
+    if (!this.initialized) {
+      throw new Error('Game engine not initialized');
+    }
+    return await this.characterManager.createNewCharacter(accountId, name);
+  }
+
+  /**
+   * Connect a player to a character
+   */
+  async connectPlayerToCharacter(socketId: string, characterId: string): Promise<Character> {
     if (!this.initialized) {
       throw new Error('Game engine not initialized');
     }
 
-    const startingRoomId = this.world.getStartingRoomId();
-    const player = createPlayer(name, startingRoomId);
+    const character = await this.characterManager.connectPlayer(socketId, characterId);
+    this.actorRegistry.addPlayer(characterId, character.currentRoomId, socketId);
 
-    this.players.set(player.id, player);
-    this.actorRegistry.addPlayer(player.id, startingRoomId, socketId);
-
-    // Broadcast player entered event to others in room
+    // Broadcast player entered event
     this.broadcastEvent({
-      id: createEventId(`event-${Date.now()}-entered`),
+      id: `event-${nanoid()}`,
       type: 'player_entered',
       timestamp: Date.now(),
-      originRoomId: startingRoomId,
-      content: `${player.name} has entered the room.`,
+      originRoomId: character.currentRoomId,
+      content: `${character.name} has entered the room.`,
       relatedEntities: [],
       visibility: 'room',
     });
 
-    // Send initial room description to the joining player
-    const roomDescription = await this.world.getRoomDescription(startingRoomId, player.name);
+    // Send initial room description
+    const roomDescription = await this.world.getRoomDescription(
+      character.currentRoomId,
+      character.name,
+    );
 
     this.broadcastEvent(
       {
-        id: createEventId(`event-${Date.now()}-initial-look`),
+        id: `event-${nanoid()}`,
         type: 'room_description',
         timestamp: Date.now(),
-        originRoomId: startingRoomId,
+        originRoomId: character.currentRoomId,
         content: roomDescription,
         relatedEntities: [],
         visibility: 'private',
@@ -94,50 +114,41 @@ export class GameEngine {
       socketId,
     );
 
-    return player;
+    return character;
   }
 
   /**
-   * Remove a player from the game
+   * Disconnect a player
    */
-  removePlayer(socketId: string): void {
-    const actorId = this.actorRegistry.getActorBySocketId(socketId);
-    if (!actorId) return;
-
-    const player = this.players.get(actorId);
-    if (!player) return;
+  async disconnectPlayer(socketId: string): Promise<void> {
+    const character = await this.characterManager.disconnectPlayer(socketId);
+    if (!character) return;
 
     // Broadcast player left event
     this.broadcastEvent({
-      id: createEventId(`event-${Date.now()}`),
+      id: `event-${nanoid()}`,
       type: 'player_left',
       timestamp: Date.now(),
-      originRoomId: player.currentRoomId,
-      content: `${player.name} has left the room.`,
+      originRoomId: character.currentRoomId,
+      content: `${character.name} has left the room.`,
       relatedEntities: [],
       visibility: 'room',
     });
 
     this.actorRegistry.removeBySocketId(socketId);
-    this.players.delete(actorId);
   }
 
   /**
    * Handle a command from a player
    */
   async handleCommand(socketId: string, commandText: string): Promise<void> {
-    const actorId = this.actorRegistry.getActorBySocketId(socketId);
-    if (!actorId) {
-      throw new Error('Player not found');
-    }
-
-    const player = this.players.get(actorId);
-    if (!player) {
-      throw new Error('Player not found');
+    const character = this.characterManager.getCharacterBySocketId(socketId);
+    if (!character) {
+      throw new Error('Character not found');
     }
 
     const context: CommandContext = {
-      player,
+      character,
       world: this.world,
     };
 
@@ -149,13 +160,17 @@ export class GameEngine {
       return;
     }
 
-    // Handle movement commands (update actor location)
+    // Handle movement commands (update character location)
     if (result.success && result.events.length > 0) {
       const moveEvent = result.events.find((e) => e.type === 'movement');
       if (moveEvent?.data && this.isMovementData(moveEvent.data)) {
-        // Update player location
-        player.currentRoomId = moveEvent.data.toRoomId;
-        this.actorRegistry.moveActor(player.id, moveEvent.data.fromRoomId, moveEvent.data.toRoomId);
+        // Update character location in memory
+        character.currentRoomId = moveEvent.data.toRoomId;
+        this.actorRegistry.moveActor(
+          character.id,
+          moveEvent.data.fromRoomId,
+          moveEvent.data.toRoomId,
+        );
       }
     }
 
@@ -170,7 +185,7 @@ export class GameEngine {
    */
   private isMovementData(
     data: Record<string, unknown>,
-  ): data is { fromRoomId: RoomId; toRoomId: RoomId; direction: string } {
+  ): data is { fromRoomId: string; toRoomId: string; direction: string } {
     return (
       typeof data['fromRoomId'] === 'string' &&
       typeof data['toRoomId'] === 'string' &&
@@ -179,28 +194,28 @@ export class GameEngine {
   }
 
   /**
-   * Get room state for a player
+   * Get room state for a character
    */
-  getPlayerRoomState(playerId: ActorId): RoomState {
-    const player = this.players.get(playerId);
-    if (!player) {
-      throw new Error('Player not found');
+  getCharacterRoomState(characterId: string): RoomState {
+    const character = this.characterManager.getCharacter(characterId);
+    if (!character) {
+      throw new Error('Character not found');
     }
 
-    const room = this.world.getRoom(player.currentRoomId);
+    const room = this.world.getRoom(character.currentRoomId);
     if (!room) {
       throw new Error('Room not found');
     }
 
-    const actors = this.actorRegistry.getActorsInRoom(player.currentRoomId);
+    const actors = this.actorRegistry.getActorsInRoom(character.currentRoomId);
     const occupants = Array.from(actors)
-      .filter((id) => id !== playerId)
+      .filter((id) => id !== characterId)
       .map((id) => {
-        const p = this.players.get(id);
-        return p
+        const char = this.characterManager.getCharacter(id);
+        return char
           ? {
-              id: p.id,
-              name: p.name,
+              id: char.id,
+              name: char.name,
               type: 'player' as const,
             }
           : null;

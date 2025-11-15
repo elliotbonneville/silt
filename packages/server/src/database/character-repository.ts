@@ -3,13 +3,12 @@
  */
 
 import type { Character } from '@prisma/client';
-import type { CharacterId, RoomId } from '@silt/shared';
 import { prisma } from './client.js';
 
 export interface CreateCharacterInput {
   readonly name: string;
   readonly accountId?: string;
-  readonly spawnRoomId: RoomId;
+  readonly spawnRoomId: string;
   readonly hp?: number;
   readonly maxHp?: number;
   readonly attackPower?: number;
@@ -17,7 +16,7 @@ export interface CreateCharacterInput {
 }
 
 export interface UpdateCharacterInput {
-  readonly currentRoomId?: RoomId;
+  readonly currentRoomId?: string;
   readonly hp?: number;
   readonly maxHp?: number;
   readonly attackPower?: number;
@@ -61,7 +60,7 @@ export async function createCharacter(input: CreateCharacterInput): Promise<Char
 /**
  * Find character by ID
  */
-export async function findCharacterById(id: CharacterId): Promise<Character | null> {
+export async function findCharacterById(id: string): Promise<Character | null> {
   return await prisma.character.findUnique({
     where: { id },
   });
@@ -93,10 +92,7 @@ export async function findAliveCharactersByAccountId(accountId: string): Promise
 /**
  * Update character
  */
-export async function updateCharacter(
-  id: CharacterId,
-  input: UpdateCharacterInput,
-): Promise<Character> {
+export async function updateCharacter(id: string, input: UpdateCharacterInput): Promise<Character> {
   return await prisma.character.update({
     where: { id },
     data: input,
@@ -106,7 +102,7 @@ export async function updateCharacter(
 /**
  * Mark character as dead
  */
-export async function markCharacterDead(id: CharacterId): Promise<Character> {
+export async function markCharacterDead(id: string): Promise<Character> {
   return await prisma.character.update({
     where: { id },
     data: {
@@ -121,7 +117,7 @@ export async function markCharacterDead(id: CharacterId): Promise<Character> {
 /**
  * Delete character (hard delete - use with caution)
  */
-export async function deleteCharacter(id: CharacterId): Promise<void> {
+export async function deleteCharacter(id: string): Promise<void> {
   await prisma.character.delete({
     where: { id },
   });

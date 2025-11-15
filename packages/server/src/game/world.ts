@@ -3,20 +3,18 @@
  * Iteration 1: Loads from database
  */
 
-import type { RoomId } from '@silt/shared';
-import { createRoomId } from '@silt/shared';
 import { findAllRooms, findItemsInRoom, getRoomExits } from '../database/index.js';
 
 export interface Room {
-  readonly id: RoomId;
+  readonly id: string;
   readonly name: string;
   readonly description: string;
-  readonly exits: ReadonlyMap<string, RoomId>;
+  readonly exits: ReadonlyMap<string, string>;
 }
 
 export class World {
-  private rooms = new Map<RoomId, Room>();
-  private getPlayersInRoomFn?: (roomId: RoomId) => readonly { name: string }[];
+  private rooms = new Map<string, Room>();
+  private getPlayersInRoomFn?: (roomId: string) => readonly { name: string }[];
   private initialized = false;
 
   /**
@@ -29,15 +27,15 @@ export class World {
 
     for (const dbRoom of dbRooms) {
       const exits = getRoomExits(dbRoom);
-      const exitsMap = new Map<string, RoomId>();
+      const exitsMap = new Map<string, string>();
 
       for (const [direction, roomId] of Object.entries(exits)) {
         // biome-ignore lint/style/noNonNullAssertion: roomId is always defined in Object.entries
-        exitsMap.set(direction, createRoomId(roomId!));
+        exitsMap.set(direction, roomId!);
       }
 
       const room: Room = {
-        id: createRoomId(dbRoom.id),
+        id: dbRoom.id,
         name: dbRoom.name,
         description: dbRoom.description,
         exits: exitsMap,
@@ -48,7 +46,7 @@ export class World {
     this.initialized = true;
   }
 
-  setPlayerLookupFunction(fn: (roomId: RoomId) => readonly { name: string }[]): void {
+  setPlayerLookupFunction(fn: (roomId: string) => readonly { name: string }[]): void {
     this.getPlayersInRoomFn = fn;
   }
 
@@ -59,7 +57,7 @@ export class World {
     return this.initialized;
   }
 
-  getRoom(roomId: RoomId): Room | undefined {
+  getRoom(roomId: string): Room | undefined {
     return this.rooms.get(roomId);
   }
 
@@ -67,11 +65,11 @@ export class World {
     return Array.from(this.rooms.values());
   }
 
-  getStartingRoomId(): RoomId {
-    return createRoomId('town-square');
+  getStartingRoomId(): string {
+    return 'town-square';
   }
 
-  getRoomExit(roomId: RoomId, direction: string): RoomId | undefined {
+  getRoomExit(roomId: string, direction: string): string | undefined {
     const room = this.rooms.get(roomId);
     return room?.exits.get(direction.toLowerCase());
   }
@@ -79,7 +77,7 @@ export class World {
   /**
    * Get formatted room description including occupants and items
    */
-  async getRoomDescription(roomId: RoomId, excludePlayerName?: string): Promise<string> {
+  async getRoomDescription(roomId: string, excludePlayerName?: string): Promise<string> {
     const room = this.rooms.get(roomId);
     if (!room) {
       return 'Unknown location';

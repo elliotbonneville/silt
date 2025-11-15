@@ -2,14 +2,31 @@
  * Player types for client-server communication
  */
 
-import type { ActorId, RoomId } from './branded.js';
-
 /**
  * Player data for client UI
  */
 export interface Player {
-  readonly id: ActorId;
+  readonly id: string;
+  readonly characterId: string;
   readonly name: string;
-  currentRoomId: RoomId;
+  currentRoomId: string;
+  hp: number;
+  maxHp: number;
+  attackPower: number;
+  defense: number;
+  isAlive: boolean;
   readonly connectedAt: Date;
+}
+
+/**
+ * Character list item for character selection
+ */
+export interface CharacterListItem {
+  readonly id: string;
+  readonly name: string;
+  readonly isAlive: boolean;
+  readonly hp: number;
+  readonly maxHp: number;
+  readonly createdAt: string;
+  readonly diedAt?: string | undefined;
 }

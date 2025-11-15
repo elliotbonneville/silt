@@ -3,24 +3,22 @@
  * Maintains location data and socket mappings
  */
 
-import type { ActorId, RoomId } from '@silt/shared';
-
 export type ActorType = 'player' | 'ai_agent';
 
 export interface ActorLocation {
-  readonly actorId: ActorId;
+  readonly actorId: string;
   readonly actorType: ActorType;
-  roomId: RoomId;
+  roomId: string;
   readonly socketId?: string;
 }
 
 export class ActorRegistry {
-  private actors = new Map<ActorId, ActorLocation>();
-  private roomOccupants = new Map<RoomId, Set<ActorId>>();
-  private socketToActor = new Map<string, ActorId>();
-  private actorToSocket = new Map<ActorId, string>();
+  private actors = new Map<string, ActorLocation>();
+  private roomOccupants = new Map<string, Set<string>>();
+  private socketToActor = new Map<string, string>();
+  private actorToSocket = new Map<string, string>();
 
-  addPlayer(playerId: ActorId, roomId: RoomId, socketId: string): void {
+  addPlayer(playerId: string, roomId: string, socketId: string): void {
     const location: ActorLocation = {
       actorId: playerId,
       actorType: 'player',
@@ -34,7 +32,7 @@ export class ActorRegistry {
     this.addToRoom(playerId, roomId);
   }
 
-  addAIAgent(agentId: ActorId, roomId: RoomId): void {
+  addAIAgent(agentId: string, roomId: string): void {
     const location: ActorLocation = {
       actorId: agentId,
       actorType: 'ai_agent',
@@ -45,13 +43,13 @@ export class ActorRegistry {
     this.addToRoom(agentId, roomId);
   }
 
-  private addToRoom(actorId: ActorId, roomId: RoomId): void {
+  private addToRoom(actorId: string, roomId: string): void {
     const occupants = this.roomOccupants.get(roomId) || new Set();
     occupants.add(actorId);
     this.roomOccupants.set(roomId, occupants);
   }
 
-  moveActor(actorId: ActorId, fromRoomId: RoomId, toRoomId: RoomId): void {
+  moveActor(actorId: string, fromRoomId: string, toRoomId: string): void {
     const occupants = this.roomOccupants.get(fromRoomId);
     if (occupants) {
       occupants.delete(actorId);
@@ -65,31 +63,31 @@ export class ActorRegistry {
     }
   }
 
-  getActorsInRoom(roomId: RoomId): ReadonlySet<ActorId> {
+  getActorsInRoom(roomId: string): ReadonlySet<string> {
     return this.roomOccupants.get(roomId) || new Set();
   }
 
-  getActorLocation(actorId: ActorId): ActorLocation | undefined {
+  getActorLocation(actorId: string): ActorLocation | undefined {
     return this.actors.get(actorId);
   }
 
-  getSocketId(actorId: ActorId): string | undefined {
+  getSocketId(actorId: string): string | undefined {
     return this.actorToSocket.get(actorId);
   }
 
-  getActorBySocketId(socketId: string): ActorId | undefined {
+  getActorBySocketId(socketId: string): string | undefined {
     return this.socketToActor.get(socketId);
   }
 
-  isPlayer(actorId: ActorId): boolean {
+  isPlayer(actorId: string): boolean {
     return this.actors.get(actorId)?.actorType === 'player';
   }
 
-  isAIAgent(actorId: ActorId): boolean {
+  isAIAgent(actorId: string): boolean {
     return this.actors.get(actorId)?.actorType === 'ai_agent';
   }
 
-  removeActor(actorId: ActorId): void {
+  removeActor(actorId: string): void {
     const actor = this.actors.get(actorId);
     if (!actor) return;
 

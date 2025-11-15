@@ -3,8 +3,6 @@
  * Events are the primary way game state changes are communicated
  */
 
-import type { ActorId, CharacterId, EventId, ItemId, RoomId } from './branded.js';
-
 /**
  * Reference to an entity for logging and event tracking
  */
@@ -47,10 +45,10 @@ export type GameEventType =
  * All game state changes are communicated through events
  */
 export interface GameEvent {
-  readonly id: EventId;
+  readonly id: string;
   readonly type: GameEventType;
   readonly timestamp: number;
-  readonly originRoomId: RoomId;
+  readonly originRoomId: string;
 
   readonly actor?: EntityReference;
   readonly target?: EntityReference;
@@ -69,10 +67,10 @@ export interface GameEvent {
  * Movement event data
  */
 export interface MovementEventData {
-  readonly actorId: ActorId;
+  readonly actorId: string;
   readonly actorName: string;
-  readonly fromRoomId: RoomId;
-  readonly toRoomId: RoomId;
+  readonly fromRoomId: string;
+  readonly toRoomId: string;
   readonly direction: string;
 }
 
@@ -80,9 +78,9 @@ export interface MovementEventData {
  * Combat event data
  */
 export interface CombatEventData {
-  readonly attackerId: CharacterId;
+  readonly attackerId: string;
   readonly attackerName: string;
-  readonly targetId: CharacterId;
+  readonly targetId: string;
   readonly targetName: string;
   readonly damage: number;
   readonly targetHp: number;
@@ -93,7 +91,7 @@ export interface CombatEventData {
  * Speech event data
  */
 export interface SpeechEventData {
-  readonly speakerId: ActorId;
+  readonly speakerId: string;
   readonly speakerName: string;
   readonly message: string;
   readonly speechType: 'say' | 'whisper' | 'shout' | 'emote';
@@ -104,22 +102,22 @@ export interface SpeechEventData {
  */
 export interface RoomState {
   readonly room: {
-    readonly id: RoomId;
+    readonly id: string;
     readonly name: string;
     readonly description: string;
   };
   readonly exits: readonly {
     readonly direction: string;
-    readonly roomId: RoomId;
+    readonly roomId: string;
     readonly roomName: string;
   }[];
   readonly occupants: readonly {
-    readonly id: ActorId;
+    readonly id: string;
     readonly name: string;
     readonly type: 'player' | 'ai_agent';
   }[];
   readonly items: readonly {
-    readonly id: ItemId;
+    readonly id: string;
     readonly name: string;
   }[];
 }

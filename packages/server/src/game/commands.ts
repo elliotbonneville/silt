@@ -2,14 +2,13 @@
  * Command system for parsing and executing player commands
  */
 
+import type { Character } from '@prisma/client';
 import type { GameEvent } from '@silt/shared';
-import { createEventId } from '@silt/shared';
 import { nanoid } from 'nanoid';
-import type { Player } from './player.js';
 import type { World } from './world.js';
 
 export interface CommandContext {
-  readonly player: Player;
+  readonly character: Character;
   readonly world: World;
 }
 
@@ -23,16 +22,19 @@ export interface CommandResult {
  * Parse and execute the 'look' command
  */
 export async function executeLookCommand(ctx: CommandContext): Promise<CommandResult> {
-  const content = await ctx.world.getRoomDescription(ctx.player.currentRoomId, ctx.player.name);
+  const content = await ctx.world.getRoomDescription(
+    ctx.character.currentRoomId,
+    ctx.character.name,
+  );
 
   return {
     success: true,
     events: [
       {
-        id: createEventId(`event-${nanoid(10)}`),
+        id: `event-${nanoid(10)}`,
         type: 'room_description',
         timestamp: Date.now(),
-        originRoomId: ctx.player.currentRoomId,
+        originRoomId: ctx.character.currentRoomId,
         content,
         relatedEntities: [],
         visibility: 'private',
@@ -48,13 +50,13 @@ export async function executeGoCommand(
   ctx: CommandContext,
   direction: string,
 ): Promise<CommandResult> {
-  const currentRoom = ctx.world.getRoom(ctx.player.currentRoomId);
+  const currentRoom = ctx.world.getRoom(ctx.character.currentRoomId);
 
   if (!currentRoom) {
     return { success: false, events: [], error: 'Current room not found' };
   }
 
-  const targetRoomId = ctx.world.getRoomExit(ctx.player.currentRoomId, direction);
+  const targetRoomId = ctx.world.getRoomExit(ctx.character.currentRoomId, direction);
 
   if (!targetRoomId) {
     return {
@@ -68,29 +70,29 @@ export async function executeGoCommand(
     return { success: false, events: [], error: 'Target room not found' };
   }
 
-  const roomDescription = await ctx.world.getRoomDescription(targetRoomId, ctx.player.name);
+  const roomDescription = await ctx.world.getRoomDescription(targetRoomId, ctx.character.name);
 
   return {
     success: true,
     events: [
       {
-        id: createEventId(`event-${nanoid(10)}-movement`),
+        id: `event-${nanoid(10)}`,
         type: 'movement',
         timestamp: Date.now(),
-        originRoomId: ctx.player.currentRoomId,
-        content: `${ctx.player.name} moves ${direction}.`,
+        originRoomId: ctx.character.currentRoomId,
+        content: `${ctx.character.name} moves ${direction}.`,
         relatedEntities: [],
         visibility: 'room',
         data: {
-          actorId: ctx.player.id,
-          actorName: ctx.player.name,
-          fromRoomId: ctx.player.currentRoomId,
+          actorId: ctx.character.id,
+          actorName: ctx.character.name,
+          fromRoomId: ctx.character.currentRoomId,
           toRoomId: targetRoomId,
           direction,
         },
       },
       {
-        id: createEventId(`event-${nanoid(10)}-room-desc`),
+        id: `event-${nanoid(10)}`,
         type: 'room_description',
         timestamp: Date.now(),
         originRoomId: targetRoomId,
@@ -114,11 +116,11 @@ export function executeSayCommand(ctx: CommandContext, message: string): Command
     success: true,
     events: [
       {
-        id: createEventId(`event-${nanoid(10)}`),
+        id: `event-${nanoid(10)}`,
         type: 'speech',
         timestamp: Date.now(),
-        originRoomId: ctx.player.currentRoomId,
-        content: `${ctx.player.name} says: "${message}"`,
+        originRoomId: ctx.character.currentRoomId,
+        content: `${ctx.character.name} says: "${message}"`,
         relatedEntities: [],
         visibility: 'room',
       },
@@ -138,11 +140,11 @@ export function executeShoutCommand(ctx: CommandContext, message: string): Comma
     success: true,
     events: [
       {
-        id: createEventId(`event-${nanoid(10)}`),
+        id: `event-${nanoid(10)}`,
         type: 'shout',
         timestamp: Date.now(),
-        originRoomId: ctx.player.currentRoomId,
-        content: `${ctx.player.name} shouts: "${message}"`,
+        originRoomId: ctx.character.currentRoomId,
+        content: `${ctx.character.name} shouts: "${message}"`,
         relatedEntities: [],
         visibility: 'room',
       },

@@ -3,14 +3,13 @@
  */
 
 import type { Room } from '@prisma/client';
-import type { RoomId } from '@silt/shared';
 import { prisma } from './client.js';
 import { parseRoomExits, type RoomExitsData } from './schemas.js';
 
 export interface CreateRoomInput {
   readonly name: string;
   readonly description: string;
-  readonly exits: Record<string, RoomId>; // { "north": "room-id", "east": "room-id" }
+  readonly exits: Record<string, string>; // { "north": "room-id", "east": "room-id" }
   readonly isStarting?: boolean;
   readonly createdBy?: string;
 }
@@ -18,7 +17,7 @@ export interface CreateRoomInput {
 export interface UpdateRoomInput {
   readonly name?: string;
   readonly description?: string;
-  readonly exits?: Record<string, RoomId>;
+  readonly exits?: Record<string, string>;
 }
 
 /**
@@ -48,7 +47,7 @@ export async function createRoom(input: CreateRoomInput): Promise<Room> {
 /**
  * Find room by ID
  */
-export async function findRoomById(id: RoomId): Promise<Room | null> {
+export async function findRoomById(id: string): Promise<Room | null> {
   return await prisma.room.findUnique({
     where: { id },
   });
@@ -75,7 +74,7 @@ export async function findAllRooms(): Promise<Room[]> {
 /**
  * Update room
  */
-export async function updateRoom(id: RoomId, input: UpdateRoomInput): Promise<Room> {
+export async function updateRoom(id: string, input: UpdateRoomInput): Promise<Room> {
   const updateData: Record<string, unknown> = {};
 
   if (input.name !== undefined) updateData['name'] = input.name;
@@ -91,7 +90,7 @@ export async function updateRoom(id: RoomId, input: UpdateRoomInput): Promise<Ro
 /**
  * Delete room
  */
-export async function deleteRoom(id: RoomId): Promise<void> {
+export async function deleteRoom(id: string): Promise<void> {
   await prisma.room.delete({
     where: { id },
   });

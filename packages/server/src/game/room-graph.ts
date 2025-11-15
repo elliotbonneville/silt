@@ -3,15 +3,13 @@
  * Supports range-based event propagation
  */
 
-import type { RoomId } from '@silt/shared';
-
 export interface RoomConnection {
-  readonly id: RoomId;
-  readonly exits: ReadonlyMap<string, RoomId>;
+  readonly id: string;
+  readonly exits: ReadonlyMap<string, string>;
 }
 
 export class RoomGraph {
-  private adjacencyMap = new Map<RoomId, readonly RoomId[]>();
+  private adjacencyMap = new Map<string, readonly string[]>();
 
   constructor(rooms: readonly RoomConnection[]) {
     this.buildGraph(rooms);
@@ -21,7 +19,7 @@ export class RoomGraph {
     this.adjacencyMap.clear();
 
     for (const room of rooms) {
-      const neighbors: RoomId[] = [];
+      const neighbors: string[] = [];
       for (const [, neighborId] of room.exits) {
         neighbors.push(neighborId);
       }
@@ -33,10 +31,10 @@ export class RoomGraph {
    * Find all rooms within N steps using BFS
    * Returns Map of roomId → distance from origin
    */
-  getRoomsWithinDistance(originRoomId: RoomId, maxDistance: number): Map<RoomId, number> {
-    const distances = new Map<RoomId, number>();
-    const queue: Array<readonly [RoomId, number]> = [[originRoomId, 0]];
-    const visited = new Set<RoomId>();
+  getRoomsWithinDistance(originRoomId: string, maxDistance: number): Map<string, number> {
+    const distances = new Map<string, number>();
+    const queue: Array<readonly [string, number]> = [[originRoomId, 0]];
+    const visited = new Set<string>();
 
     while (queue.length > 0) {
       const entry = queue.shift();

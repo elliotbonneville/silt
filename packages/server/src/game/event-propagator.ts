@@ -3,7 +3,7 @@
  * based on distance and event type
  */
 
-import type { ActorId, GameEvent } from '@silt/shared';
+import type { GameEvent } from '@silt/shared';
 import { EVENT_RANGES } from '@silt/shared';
 import type { ActorRegistry } from './actor-registry.js';
 import type { RoomGraph } from './room-graph.js';
@@ -18,8 +18,8 @@ export class EventPropagator {
    * Calculate which actors (players + AI agents) should receive an event
    * Returns Map of actorId → event (potentially modified for distance)
    */
-  calculateAffectedActors(event: GameEvent): Map<ActorId, GameEvent> {
-    const affected = new Map<ActorId, GameEvent>();
+  calculateAffectedActors(event: GameEvent): Map<string, GameEvent> {
+    const affected = new Map<string, GameEvent>();
     const range = this.getEventRange(event.type);
 
     const roomsInRange = this.roomGraph.getRoomsWithinDistance(event.originRoomId, range);

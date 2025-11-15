@@ -3,7 +3,6 @@
  */
 
 import type { Item } from '@prisma/client';
-import type { CharacterId, ItemId, RoomId } from '@silt/shared';
 import { prisma } from './client.js';
 import { type ItemStatsData, parseItemStats } from './schemas.js';
 
@@ -12,8 +11,8 @@ export interface CreateItemInput {
   readonly description: string;
   readonly itemType: 'weapon' | 'armor' | 'consumable' | 'misc';
   readonly stats?: ItemStatsData;
-  readonly roomId?: RoomId;
-  readonly characterId?: CharacterId;
+  readonly roomId?: string;
+  readonly characterId?: string;
 }
 
 /**
@@ -48,7 +47,7 @@ export async function createItem(input: CreateItemInput): Promise<Item> {
 /**
  * Find item by ID
  */
-export async function findItemById(id: ItemId): Promise<Item | null> {
+export async function findItemById(id: string): Promise<Item | null> {
   return await prisma.item.findUnique({
     where: { id },
   });
@@ -57,7 +56,7 @@ export async function findItemById(id: ItemId): Promise<Item | null> {
 /**
  * Find items in a room
  */
-export async function findItemsInRoom(roomId: RoomId): Promise<Item[]> {
+export async function findItemsInRoom(roomId: string): Promise<Item[]> {
   return await prisma.item.findMany({
     where: { roomId },
     orderBy: { name: 'asc' },
@@ -67,7 +66,7 @@ export async function findItemsInRoom(roomId: RoomId): Promise<Item[]> {
 /**
  * Find items in character inventory
  */
-export async function findItemsInInventory(characterId: CharacterId): Promise<Item[]> {
+export async function findItemsInInventory(characterId: string): Promise<Item[]> {
   return await prisma.item.findMany({
     where: { characterId },
     orderBy: { name: 'asc' },
@@ -77,7 +76,7 @@ export async function findItemsInInventory(characterId: CharacterId): Promise<It
 /**
  * Find equipped items for a character
  */
-export async function findEquippedItems(characterId: CharacterId): Promise<Item[]> {
+export async function findEquippedItems(characterId: string): Promise<Item[]> {
   return await prisma.item.findMany({
     where: {
       characterId,
@@ -89,7 +88,7 @@ export async function findEquippedItems(characterId: CharacterId): Promise<Item[
 /**
  * Move item to character inventory
  */
-export async function moveItemToInventory(itemId: ItemId, characterId: CharacterId): Promise<Item> {
+export async function moveItemToInventory(itemId: string, characterId: string): Promise<Item> {
   return await prisma.item.update({
     where: { id: itemId },
     data: {
@@ -102,7 +101,7 @@ export async function moveItemToInventory(itemId: ItemId, characterId: Character
 /**
  * Move item to room
  */
-export async function moveItemToRoom(itemId: ItemId, roomId: RoomId): Promise<Item> {
+export async function moveItemToRoom(itemId: string, roomId: string): Promise<Item> {
   return await prisma.item.update({
     where: { id: itemId },
     data: {
@@ -116,7 +115,7 @@ export async function moveItemToRoom(itemId: ItemId, roomId: RoomId): Promise<It
 /**
  * Equip item
  */
-export async function equipItem(itemId: ItemId): Promise<Item> {
+export async function equipItem(itemId: string): Promise<Item> {
   return await prisma.item.update({
     where: { id: itemId },
     data: { isEquipped: true },
@@ -126,7 +125,7 @@ export async function equipItem(itemId: ItemId): Promise<Item> {
 /**
  * Unequip item
  */
-export async function unequipItem(itemId: ItemId): Promise<Item> {
+export async function unequipItem(itemId: string): Promise<Item> {
   return await prisma.item.update({
     where: { id: itemId },
     data: { isEquipped: false },
@@ -136,7 +135,7 @@ export async function unequipItem(itemId: ItemId): Promise<Item> {
 /**
  * Delete item
  */
-export async function deleteItem(itemId: ItemId): Promise<void> {
+export async function deleteItem(itemId: string): Promise<void> {
   await prisma.item.delete({
     where: { id: itemId },
   });

@@ -39,15 +39,37 @@ const gameEngine = new GameEngine(io);
 io.on('connection', (socket) => {
   console.info(`Client connected: ${socket.id}`);
 
-  // Player joins game
-  socket.on('player:join', async (data: { name: string }, callback) => {
+  // Get list of characters for an account
+  socket.on('character:list', async (data: { accountId: string }, callback) => {
     try {
-      const player = await gameEngine.addPlayer(socket.id, data.name);
-      const initialRoom = gameEngine.getPlayerRoomState(player.id);
-
-      callback({ success: true, player, initialRoom });
+      const characters = await gameEngine.getCharactersForAccount(data.accountId);
+      callback({ success: true, characters });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to join game';
+      const message = error instanceof Error ? error.message : 'Failed to load characters';
+      callback({ success: false, error: message });
+    }
+  });
+
+  // Create a new character
+  socket.on('character:create', async (data: { accountId: string; name: string }, callback) => {
+    try {
+      const character = await gameEngine.createNewCharacter(data.accountId, data.name);
+      callback({ success: true, character });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create character';
+      callback({ success: false, error: message });
+    }
+  });
+
+  // Select and connect with a character
+  socket.on('character:select', async (data: { characterId: string }, callback) => {
+    try {
+      const character = await gameEngine.connectPlayerToCharacter(socket.id, data.characterId);
+      const initialRoom = gameEngine.getCharacterRoomState(character.id);
+
+      callback({ success: true, character, initialRoom });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to select character';
       callback({ success: false, error: message });
     }
   });
@@ -63,9 +85,9 @@ io.on('connection', (socket) => {
   });
 
   // Player disconnects
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     console.info(`Client disconnected: ${socket.id}`);
-    gameEngine.removePlayer(socket.id);
+    await gameEngine.disconnectPlayer(socket.id);
   });
 });
 
