@@ -1,7 +1,18 @@
 #!/usr/bin/env sh
+set -e
 
-# Run all validation checks before commit
-npm run lint
-npm run type-check
-npm run check-file-size
-npm run check-unused-exports
+# All validation checks must pass before commit
+echo "🔍 Running pre-commit validation..."
+echo ""
+
+npm run lint || exit 1
+npm run type-check || exit 1
+
+# Run tests only if test files exist (exit 0 if no tests found)
+npm test -- --run --passWithNoTests || exit 1
+
+npm run check-file-size || exit 1
+npm run check-unused-exports || exit 1
+
+echo ""
+echo "✅ All pre-commit checks passed!"
