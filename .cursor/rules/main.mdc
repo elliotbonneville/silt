@@ -1,0 +1,372 @@
+---
+alwaysApply: true
+---
+
+# Modern MUD Project - Code Standards
+
+## Philosophy: Why These Rules Exist
+
+We're building a **living, multiplayer world** with AI agents, real-time combat, and permadeath. This will grow to 100k+ lines across complex systems (combat, AI memory, dynamic world building).
+
+**Why strict rules?**
+- **Type safety**: One `TypeError` can crash the server or corrupt character data (permanent loss)
+- **300-line max**: Large files = merge conflicts, slow compilation, hidden bugs. Small files = easy testing, fast reviews
+- **Comprehensive tests**: 80% min coverage prevents game-breaking bugs in production
+- **Small commits**: 50-100 lines = easy to review, debug, and revert
+- **Pre-commit hooks**: Catch errors before they reach production (10x cheaper than fixing live)
+- **Biome only**: 100x faster than ESLint+Prettier, single tool
+
+**The trade-off:** We trade "move fast and break things" for confidence that code actually works at scale.
+
+> "The only way to go fast is to go well." - Uncle Bob
+
+---
+
+## Core Principles
+- **Maximum type safety** - NO `any`, `as`, `!`, `@ts-ignore`
+- **300 line maximum per file** - STRICTLY ENFORCED
+- **Biome for all linting/formatting** - NO ESLint, NO Prettier
+- **80% test coverage minimum** - 95% on critical paths (combat, AI, commands)
+- **Small commits** - 50-100 lines, one logical change
+- **Pre-commit validation** - All checks must pass
+
+---
+
+## TypeScript: Strict Mode Required
+
+### tsconfig.json MUST include:
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "exactOptionalPropertyTypes": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false
+  }
+}
+```
+
+### FORBIDDEN
+❌ `any` type → use `unknown` and narrow  
+❌ `as` casting → use type guards  
+❌ `@ts-ignore` / `@ts-expect-error`  
+❌ `!` non-null assertion  
+❌ Type assertions `<Type>value`  
+❌ `Function` or `Object` types  
+❌ `var` keyword  
+
+### REQUIRED PATTERNS
+```typescript
+// ✅ Type narrowing
+function process(value: unknown): string {
+  if (typeof value === 'string') return value.toUpperCase();
+  throw new Error('Expected string');
+}
+
+// ✅ Discriminated unions
+type Result<T> = 
+  | { success: true; data: T }
+  | { success: false; error: Error };
+
+// ✅ Branded types for IDs
+type CharacterId = string & { readonly __brand: 'CharacterId' };
+
+// ✅ Exhaustive switch
+function handle(event: GameEvent): void {
+  switch (event.type) {
+    case 'combat': return handleCombat(event);
+    case 'movement': return handleMovement(event);
+    default:
+      const _exhaustive: never = event.type;
+      throw new Error(`Unhandled: ${_exhaustive}`);
+  }
+}
+```
+
+---
+
+## File Size: 300 Lines Maximum
+
+**Count includes everything** - code, comments, blank lines.
+
+**At 250 lines:** Plan refactoring  
+**At 300 lines:** STOP and split immediately
+
+**Strategies:**
+- Extract functions to new modules
+- Compose large classes from smaller systems
+- Co-locate related files in subdirectories
+
+```
+src/game/combat/
+  combat-system.ts        (< 300)
+  damage-calculator.ts    (< 300)
+  combat-validator.ts     (< 300)
+```
+
+---
+
+## Biome Configuration
+
+**biome.json:**
+```json
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "organizeImports": { "enabled": true },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": { "noExplicitAny": "error" },
+      "style": { "noNonNullAssertion": "error" }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "all",
+      "semicolons": "always"
+    }
+  }
+}
+```
+
+---
+
+## Code Quality Rules
+
+### Naming
+- Types: `PascalCase`
+- Variables/functions: `camelCase`
+- Constants: `SCREAMING_SNAKE_CASE`
+- Private members: prefix `_`
+- Branded types: suffix `Id` or `Type`
+
+### Functions
+- **Max 50 lines per function**
+- Pure functions preferred
+- Early returns for clarity
+- Single responsibility
+
+### Error Handling
+- Explicit error types (extend `Error`)
+- Result types for operations: `{ success: boolean; data?: T; error?: Error }`
+- Never silently catch errors
+
+### Immutability
+- `readonly` by default
+- Return new objects, don't mutate parameters
+- Use `readonly` arrays when appropriate
+
+---
+
+## Testing Requirements
+
+### Coverage
+- **80% minimum** across codebase
+- **95% minimum** on critical paths (combat, movement, AI, commands)
+- **100% coverage** for pure functions
+
+### Organization
+- Co-locate tests: `combat-system.test.ts` next to `combat-system.ts`
+- Tests under 50 lines each
+- Descriptive test names: `should reduce HP when taking damage from valid attack`
+- Test edge cases and error paths
+
+### Test Structure
+```typescript
+it('should deal minimum 1 damage when defense exceeds attack', () => {
+  // Arrange
+  const attacker = createCharacter({ attackPower: 5 });
+  const defender = createCharacter({ defense: 100 });
+  
+  // Act
+  const damage = calculateDamage(attacker, defender);
+  
+  // Assert
+  expect(damage).toBe(1);
+});
+```
+
+---
+
+## Git Commits
+
+### Conventional Commits (REQUIRED)
+```
+feat(combat): add damage calculation
+fix(ai): prevent infinite loop in pathfinding
+refactor(commands): extract parser to separate module
+test(combat): add edge cases for damage calculation
+docs(api): add JSDoc to CommandRegistry
+```
+
+### Commit Size (STRICTLY ENFORCED)
+- **Maximum 200 lines changed**
+- **Ideal: 50-100 lines**
+- One logical change per commit
+- Commit after completing function + tests
+
+### When to Commit
+- After function + tests complete
+- Before switching tasks
+- Before breaks
+- When tests pass
+
+---
+
+## Pre-Commit Hook (MANDATORY)
+
+**Setup:**
+```bash
+npm install --save-dev husky lint-staged
+npx husky install
+npx husky add .husky/pre-commit "npx lint-staged"
+```
+
+**package.json:**
+```json
+{
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "biome check --apply",
+      "tsc --noEmit",
+      "vitest related --run"
+    ]
+  },
+  "scripts": {
+    "check-file-size": "node scripts/check-file-size.js"
+  }
+}
+```
+
+**File size check script (scripts/check-file-size.js):**
+```javascript
+import { readFileSync } from 'fs';
+import { glob } from 'glob';
+
+const MAX_LINES = 300;
+const files = glob.sync('src/**/*.{ts,tsx}');
+const violations = files
+  .map(f => ({ file: f, lines: readFileSync(f, 'utf-8').split('\n').length }))
+  .filter(({ lines }) => lines > MAX_LINES);
+
+if (violations.length > 0) {
+  console.error('❌ File size violations:');
+  violations.forEach(v => console.error(`  ${v.file}: ${v.lines} lines`));
+  process.exit(1);
+}
+console.log('✅ All files under 300 lines');
+```
+
+### Pre-Commit Checks (ALL MUST PASS)
+1. Biome linting (zero errors)
+2. TypeScript compilation (zero errors)
+3. Related tests pass
+4. All files under 300 lines
+
+**NEVER use `--no-verify`** except emergency hotfix (document why in message)
+
+---
+
+## Pre-Commit Checklist
+
+### Automated (by hook)
+- [x] Biome passes
+- [x] TypeScript compiles
+- [x] Tests pass
+- [x] Files under 300 lines
+
+### Manual (developer responsibility)
+- [ ] Conventional commit format
+- [ ] < 200 lines changed
+- [ ] One logical change
+- [ ] New code has tests
+- [ ] No forbidden patterns (`any`, `as`, `!`)
+- [ ] JSDoc on exports
+- [ ] No `console.log` (use logger)
+- [ ] No commented code
+
+---
+
+## Architecture Patterns
+
+### Dependency Injection
+```typescript
+// ✅ Constructor injection
+class CommandExecutor {
+  constructor(
+    private readonly registry: CommandRegistry,
+    private readonly logger: EventLogger,
+  ) {}
+}
+```
+
+### Interface Segregation
+```typescript
+// ✅ Focused interfaces
+interface Movable { move(direction: Direction): void; }
+interface Attackable { attack(target: Character): void; }
+
+// ❌ God interface with 20+ methods
+```
+
+### No Magic Values
+```typescript
+// ✅ Named constants
+const STARTING_HP = 100;
+enum Direction { North = 'north', South = 'south' }
+
+// ❌ Magic numbers/strings
+if (player.hp < 100) { ... }
+```
+
+---
+
+## Documentation
+
+### JSDoc Required on Exports
+```typescript
+/**
+ * Calculates damage dealt from attacker to defender.
+ * Ensures minimum 1 damage is always dealt.
+ */
+export function calculateDamage(
+  attacker: Character,
+  defender: Character,
+): number {
+  return Math.max(1, attacker.attackPower - defender.defense);
+}
+```
+
+### Comment Complex Logic
+```typescript
+// Calculate distance from home using BFS to respect maxRoomsFromHome
+const distance = calculateRoomDistance(agent.currentRoomId, agent.homeRoomId);
+```
+
+---
+
+## Refactoring Triggers
+
+- File reaches 250 lines → plan refactor
+- Function over 50 lines → split it
+- Class with >10 methods → split responsibilities
+- Nested conditionals >3 levels → extract functions
+- Copy-pasted code → extract to shared module
+
+---
+
+**There are no exceptions to these rules.**
