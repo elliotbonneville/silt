@@ -36,9 +36,15 @@ export class EventPropagator {
     return affected;
   }
 
+  private isValidEventType(type: string): type is keyof typeof EVENT_RANGES {
+    return type in EVENT_RANGES;
+  }
+
   private getEventRange(eventType: string): number {
-    const range = EVENT_RANGES[eventType as keyof typeof EVENT_RANGES];
-    return range ?? 0;
+    if (this.isValidEventType(eventType)) {
+      return EVENT_RANGES[eventType];
+    }
+    return 0;
   }
 
   private attenuateEvent(event: GameEvent, distance: number): GameEvent {

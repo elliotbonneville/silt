@@ -1,0 +1,8 @@
+// Ban all type assertions (as casts)
+// Automatically allows 'as const' and 'as readonly'
+// For branded type constructors, use biome-ignore comments
+`$_ as $_` as $assertion where {
+  ! $assertion <: `$_ as const`,
+  ! $assertion <: `$_ as readonly $_`,
+  register_diagnostic(span=$assertion, message="Type assertions are forbidden. Use type guards instead. Exception: 'as const', 'as readonly', or branded type constructors (use biome-ignore).", severity="error")
+}

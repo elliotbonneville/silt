@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "test:e2e": "playwright test --reporter=list",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@silt/shared": "file:../shared",

@@ -1,7 +1,20 @@
 /**
- * Client entry point - will be implemented in next commits
+ * Client entry point
  */
 
-export function placeholder(): void {
-  // Placeholder to satisfy TypeScript compilation
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { GamePage } from './pages/GamePage.js';
+import './index.css';
+
+const rootElement = document.getElementById('root');
+
+if (!rootElement) {
+  throw new Error('Root element not found');
 }
+
+createRoot(rootElement).render(
+  <StrictMode>
+    <GamePage />
+  </StrictMode>,
+);

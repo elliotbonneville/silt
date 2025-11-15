@@ -16,7 +16,6 @@ for (const file of files) {
 }
 
 if (violations.length > 0) {
-  console.error('❌ File size violations:');
   for (const v of violations) {
     console.error(`  ${v.file}: ${v.lines} lines (max ${MAX_LINES})`);
   }
@@ -24,5 +23,5 @@ if (violations.length > 0) {
 }
 
 // Script output, not debug logging
-// biome-ignore lint/suspicious/noConsoleLog: Script needs to output success message
+// biome-ignore lint: Script needs to output success message
 console.log('✅ All files under 300 lines');

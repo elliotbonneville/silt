@@ -377,4 +377,12 @@ const distance = calculateRoomDistance(agent.currentRoomId, agent.homeRoomId);
 
 ---
 
+### NPX
+
+Do not use NPX. It will fail in the sandbox.
+
+### Documentation
+
+Do NOT create documentation files unless user asks you to and supplies a name.
+
 **There are no exceptions to these rules.**
