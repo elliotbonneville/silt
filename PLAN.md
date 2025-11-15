@@ -282,9 +282,11 @@ sequenceDiagram
 - **Frontend**: Vite + React + TypeScript + React Router v7
 - **Backend**: Node.js + TypeScript + Express
 - **Real-time**: Socket.io (most mature WebSocket library)
-- **Database**: PostgreSQL + Prisma ORM (easy schema updates, great TypeScript support)
+- **Database**: SQLite + Prisma ORM (Iteration 0-2), PostgreSQL (Iteration 3+)
 - **AI**: OpenAI API with JSON Schema for structured responses
 - **Styling**: TailwindCSS (quick, modern, minimal)
+- **Monorepo**: npm workspaces (packages/server, packages/client, packages/shared)
+- **Deployment**: Render (excellent for Node + WebSockets + PostgreSQL)
 
 ---
 
@@ -972,24 +974,57 @@ const routes = [
 
 ### **Technology Choices**
 
-**Backend:**
+**Monorepo Structure (npm workspaces):**
+```
+silt/
+├── package.json              (root workspace config)
+├── packages/
+│   ├── server/               (Game engine + API)
+│   │   ├── src/
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   ├── client/               (React app - player & admin UI)
+│   │   ├── src/
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   └── shared/               (Shared types, constants)
+│       ├── src/
+│       │   ├── types/        (GameEvent, Character, Room, etc.)
+│       │   ├── constants/    (EVENT_RANGES, GAME_CONSTANTS)
+│       │   └── utils/        (Shared helper functions)
+│       ├── package.json
+│       └── tsconfig.json
+├── scripts/
+│   └── check-file-size.js
+├── .env.example
+└── README.md
+```
+
+**Why monorepo:**
+- ✅ Share TypeScript types between client and server
+- ✅ Single source of truth for game constants
+- ✅ Atomic commits across both codebases
+- ✅ Easier type safety (no manual sync)
+- ✅ Simpler deployment (single repo)
+
+**Backend (packages/server):**
 - Game Engine: TypeScript classes (pure logic)
 - API: Express + Socket.io
-- Database: PostgreSQL + Prisma
-- Real-time: Socket.io rooms for different client types
+- Database: SQLite (dev) → PostgreSQL (production)
+- Real-time: Socket.io rooms for scalable broadcasting
 
-**Player Client:**
+**Frontend (packages/client):**
 - Framework: React + Vite
 - Routing: React Router v7
-- UI: Terminal-style text component
+- UI: Terminal-style text component (player) + Visual map editor (admin)
 - State: Socket.io connection + React state
+- Forms: React Hook Form + Zod validation (admin)
 
-**Admin Client:**
-- Framework: React + Vite (same app)
-- Routing: React Router v7
-- Map Visualization: React Flow or custom Canvas/SVG
-- Forms: React Hook Form + Zod validation
-- State: Socket.io + React Query for REST calls
+**Shared (packages/shared):**
+- TypeScript interfaces (GameEvent, Character, Room, Item, etc.)
+- Game constants (EVENT_RANGES, GAME_CONSTANTS)
+- Utility functions (type guards, validators)
+- Branded types (CharacterId, RoomId, ItemId)
 
 ### **Key Architectural Decisions**
 1. **Account vs Character Separation**: Accounts own multiple Characters. Character death is permanent.
@@ -2104,9 +2139,572 @@ class AmbienceService {
 
 ## **Technical Considerations**
 
-### **Scalability**
+### **Scalability: Socket.io Rooms Architecture (CRITICAL)**
+
+**Problem:** Broadcasting to all connected players doesn't scale beyond 50-100 players.
+
+**Solution:** Room-based architecture from Iteration 0 (not optional).
+
+```typescript
+// WRONG: Broadcast to all connected clients
+io.emit('game:event', event);  // Sends to EVERYONE (doesn't scale)
+
+// RIGHT: Broadcast only to players in same game room
+io.to(`room:${roomId}`).emit('game:event', event);  // Only players in this room
+```
+
+#### **Implementation (Iteration 0)**
+
+**Core Architecture: Actor Registry + Event Propagation**
+
+```typescript
+// Layer 1: Track ALL actors (players + AI agents)
+interface ActorLocation {
+  actorId: string;
+  actorType: 'player' | 'ai_agent';
+  roomId: string;
+  socketId?: string;  // Only players have sockets
+}
+
+class ActorRegistry {
+  private actors = new Map<string, ActorLocation>();
+  private roomOccupants = new Map<string, Set<string>>();  // roomId → actorIds
+  private socketToActor = new Map<string, string>();
+  private actorToSocket = new Map<string, string>();
+  
+  addPlayer(playerId: string, roomId: string, socketId: string) {
+    this.actors.set(playerId, { 
+      actorId: playerId, 
+      actorType: 'player', 
+      roomId, 
+      socketId 
+    });
+    this.socketToActor.set(socketId, playerId);
+    this.actorToSocket.set(playerId, socketId);
+    this.addToRoom(playerId, roomId);
+  }
+  
+  addAIAgent(agentId: string, roomId: string) {
+    this.actors.set(agentId, { 
+      actorId: agentId, 
+      actorType: 'ai_agent', 
+      roomId 
+    });
+    this.addToRoom(agentId, roomId);
+  }
+  
+  private addToRoom(actorId: string, roomId: string) {
+    const occupants = this.roomOccupants.get(roomId) || new Set();
+    occupants.add(actorId);
+    this.roomOccupants.set(roomId, occupants);
+  }
+  
+  moveActor(actorId: string, fromRoomId: string, toRoomId: string) {
+    this.roomOccupants.get(fromRoomId)?.delete(actorId);
+    this.addToRoom(actorId, toRoomId);
+    
+    const actor = this.actors.get(actorId);
+    if (actor) actor.roomId = toRoomId;
+  }
+  
+  getActorsInRoom(roomId: string): Set<string> {
+    return this.roomOccupants.get(roomId) || new Set();
+  }
+  
+  getSocketId(actorId: string): string | undefined {
+    return this.actorToSocket.get(actorId);
+  }
+  
+  isPlayer(actorId: string): boolean {
+    return this.actors.get(actorId)?.actorType === 'player';
+  }
+}
+
+// Layer 2: Calculate which actors receive which events
+class EventPropagator {
+  constructor(
+    private roomGraph: RoomGraph,
+    private actorRegistry: ActorRegistry
+  ) {}
+  
+  /**
+   * Calculate which actors (players + AI agents) receive this event
+   * Returns Map of actorId → potentially modified event
+   */
+  calculateAffectedActors(event: GameEvent): Map<string, GameEvent> {
+    const affected = new Map<string, GameEvent>();
+    const range = EVENT_RANGES[event.type] ?? 0;
+    
+    // Get all rooms within range
+    const roomsInRange = this.roomGraph.getRoomsWithinDistance(
+      event.originRoomId,
+      range
+    );
+    
+    // For each room, get ALL actors and attenuate event
+    for (const [roomId, distance] of roomsInRange) {
+      const actorsInRoom = this.actorRegistry.getActorsInRoom(roomId);
+      const attenuatedEvent = this.attenuateEvent(event, distance, roomId);
+      
+      for (const actorId of actorsInRoom) {
+        affected.set(actorId, attenuatedEvent);
+      }
+    }
+    
+    return affected;
+  }
+  
+  private attenuateEvent(
+    event: GameEvent,
+    distance: number,
+    targetRoomId: string
+  ): GameEvent {
+    if (distance === 0) return event;
+    
+    // Attenuate based on event type and distance
+    switch (event.type) {
+      case 'combat_start':
+        return {
+          ...event,
+          type: 'ambient',
+          content: distance === 1
+            ? 'You hear sounds of combat nearby.'
+            : 'You hear distant fighting.',
+          attenuated: true
+        };
+      case 'death':
+        const direction = this.roomGraph.getDirectionBetween(
+          targetRoomId,
+          event.originRoomId
+        );
+        return {
+          ...event,
+          type: 'ambient',
+          content: `A scream echoes from ${direction || 'nearby'}.`,
+          attenuated: true
+        };
+      default:
+        return event;
+    }
+  }
+}
+
+// Layer 3: Deliver events to actors
+class EventDeliverySystem {
+  constructor(
+    private io: Server,
+    private actorRegistry: ActorRegistry,
+    private aiAgentManager: AIAgentManager
+  ) {}
+  
+  /**
+   * Deliver events to affected actors
+   * Players get WebSocket messages, AI agents get queued events
+   */
+  async deliverEvents(affectedActors: Map<string, GameEvent>) {
+    for (const [actorId, event] of affectedActors) {
+      if (this.actorRegistry.isPlayer(actorId)) {
+        // Send to player via socket
+        const socketId = this.actorRegistry.getSocketId(actorId);
+        if (socketId) {
+          this.io.to(socketId).emit('game:event', event);
+        }
+      } else {
+        // Queue event for AI agent to process
+        await this.aiAgentManager.queueEventForAgent(actorId, event);
+      }
+    }
+  }
+}
+
+// High-level event system (what game code uses)
+class EventSystem {
+  constructor(
+    private propagator: EventPropagator,
+    private delivery: EventDeliverySystem,
+    private logger: GameLogger
+  ) {}
+  
+  /**
+   * Broadcast any game event - ONLY method game code calls
+   */
+  async broadcast(event: GameEvent) {
+    // 1. Calculate affected actors (game logic)
+    const affectedActors = this.propagator.calculateAffectedActors(event);
+    
+    // 2. Deliver to players (WebSocket) and AI agents (event queue)
+    await this.delivery.deliverEvents(affectedActors);
+    
+    // 3. Send to admins (monitoring)
+    this.delivery.sendToAdmins(event);
+    
+    // 4. Log to database
+    await this.logger.logEvent(event);
+  }
+}
+```
+
+#### **AI Agent Event Processing**
+
+AI agents receive events and can react:
+
+```typescript
+class AIAgentManager {
+  private agentEventQueues = new Map<string, GameEvent[]>();
+  
+  async queueEventForAgent(agentId: string, event: GameEvent) {
+    const queue = this.agentEventQueues.get(agentId) || [];
+    queue.push(event);
+    this.agentEventQueues.set(agentId, queue);
+    
+    // Trigger agent to process events (debounced)
+    this.scheduleAgentProcessing(agentId);
+  }
+  
+  private async scheduleAgentProcessing(agentId: string) {
+    const agent = await this.getAgent(agentId);
+    if (!agent.canAct()) return;  // Check cooldowns
+    
+    const events = this.agentEventQueues.get(agentId) || [];
+    if (events.length === 0) return;
+    
+    // Agent decides what to do based on events
+    const decision = await agent.decideAction(events);
+    
+    if (decision) {
+      // Agent executes action through normal command system
+      await this.executeAgentAction(agent, decision);
+    }
+    
+    // Clear processed events
+    this.agentEventQueues.set(agentId, []);
+  }
+}
+```
+
+**Example: AI Agent Hears Combat**
+
+```
+1. Player attacks goblin in Forest Path
+2. EventSystem.broadcast({ type: 'combat_start', originRoomId: 'forest', ... })
+3. EventPropagator calculates affected actors:
+   - Players in Forest Path (distance 0)
+   - Players in Town Square (distance 1) 
+   - AI agent "Town Crier" in Town Square (distance 1)
+4. EventDeliverySystem:
+   - Sends to player sockets
+   - Queues event for Town Crier AI
+5. Town Crier processes event:
+   - Hears "sounds of combat nearby"
+   - Decides to warn other players
+   - Shouts: "I hear fighting in the forest! Someone help!"
+```
+
+#### **Scalability Math**
+
+**With actor-based targeting:**
+- 1000 players, 100 AI agents across 200 rooms
+- 1 combat event in Town Square (range: 1)
+- Event propagator finds 3 affected rooms with ~18 total actors
+- Delivery system: 15 socket sends + 3 AI event queues
+- **~20 operations per event**
+
+**100x more efficient than broadcasting to all connected clients.**
+
+#### **Event Propagation System (Range-Based Broadcasting)**
+
+Different events propagate different distances - this is a **core gameplay feature**.
+
+```typescript
+// Event range configuration
+const EVENT_RANGES = {
+  whisper: 0,          // Only current room
+  speech: 0,           // Only current room
+  emote: 0,            // Only current room
+  
+  combat_start: 1,     // Adjacent rooms hear "sounds of combat"
+  combat_hit: 0,       // Only current room sees details
+  death: 2,            // Death screams carry 2 rooms
+  
+  movement: 0,         // Only room you're leaving/entering
+  
+  shout: 3,            // Shouts carry 3 rooms
+  explosion: 5,        // Major events carry far
+  
+  admin_action: 0,     // Only affects target room
+  global: Infinity,    // Server announcements
+};
+
+interface GameEvent {
+  type: string;
+  originRoomId: string;
+  range: number;       // How many rooms away to propagate
+  content: string;
+  attenuated?: string; // What distant rooms hear
+}
+```
+
+#### **Room Graph Distance Calculation**
+
+Maintain a distance cache for efficient lookup:
+
+```typescript
+class RoomGraph {
+  private adjacencyMap: Map<string, string[]>;  // roomId -> [neighborIds]
+  private distanceCache: Map<string, Map<string, number>>;
+  
+  constructor(rooms: Room[]) {
+    this.buildGraph(rooms);
+    this.precomputeDistances();
+  }
+  
+  private buildGraph(rooms: Room[]) {
+    this.adjacencyMap = new Map();
+    
+    for (const room of rooms) {
+      const neighbors: string[] = [];
+      for (const exit of room.exits) {
+        neighbors.push(exit.roomId);
+      }
+      this.adjacencyMap.set(room.id, neighbors);
+    }
+  }
+  
+  // BFS to find all rooms within N steps
+  getRoomsWithinDistance(originRoomId: string, maxDistance: number): Map<string, number> {
+    const distances = new Map<string, number>();
+    const queue: Array<[string, number]> = [[originRoomId, 0]];
+    const visited = new Set<string>();
+    
+    while (queue.length > 0) {
+      const [roomId, distance] = queue.shift()!;
+      
+      if (visited.has(roomId)) continue;
+      visited.add(roomId);
+      distances.set(roomId, distance);
+      
+      if (distance >= maxDistance) continue;
+      
+      const neighbors = this.adjacencyMap.get(roomId) || [];
+      for (const neighborId of neighbors) {
+        if (!visited.has(neighborId)) {
+          queue.push([neighborId, distance + 1]);
+        }
+      }
+    }
+    
+    return distances;
+  }
+  
+  // Get distance between two specific rooms
+  getDistance(roomA: string, roomB: string): number {
+    return this.distanceCache.get(roomA)?.get(roomB) ?? Infinity;
+  }
+}
+```
+
+#### **Intelligent Event Broadcasting**
+
+```typescript
+class EventBroadcaster {
+  constructor(
+    private io: Server,
+    private roomGraph: RoomGraph
+  ) {}
+  
+  broadcastEvent(event: GameEvent) {
+    const range = EVENT_RANGES[event.type] ?? 0;
+    
+    // Get all rooms within range
+    const affectedRooms = this.roomGraph.getRoomsWithinDistance(
+      event.originRoomId,
+      range
+    );
+    
+    // Broadcast with distance-based attenuation
+    for (const [roomId, distance] of affectedRooms) {
+      const attenuatedEvent = this.attenuateEvent(event, distance);
+      this.io.to(`room:${roomId}`).emit('game:event', attenuatedEvent);
+    }
+    
+    // Always send full detail to admins
+    this.io.to('admin:all').emit('admin:event', event);
+  }
+  
+  private attenuateEvent(event: GameEvent, distance: number): GameEvent {
+    if (distance === 0) {
+      // Same room: full detail
+      return event;
+    }
+    
+    // Distant rooms get modified content
+    switch (event.type) {
+      case 'combat_start':
+        return {
+          ...event,
+          type: 'ambient',
+          content: distance === 1 
+            ? 'You hear sounds of combat nearby.'
+            : 'You hear distant sounds of fighting.',
+          attenuated: true
+        };
+        
+      case 'death':
+        return {
+          ...event,
+          type: 'ambient',
+          content: distance === 1
+            ? 'A death scream echoes from nearby.'
+            : 'You hear a faint scream in the distance.',
+          attenuated: true
+        };
+        
+      case 'shout':
+        return {
+          ...event,
+          content: event.attenuated || event.content,
+          clarity: distance === 0 ? 'clear' : 'muffled'
+        };
+        
+      default:
+        return event;
+    }
+  }
+}
+```
+
+#### **Usage Example**
+
+```typescript
+// Player attacks in room
+async function handleAttack(playerId: string, targetId: string) {
+  const player = getPlayer(playerId);
+  const target = getPlayer(targetId);
+  
+  // Calculate damage (mechanics)
+  const damage = calculateDamage(player, target);
+  target.hp -= damage;
+  
+  // Broadcast with range
+  eventBroadcaster.broadcastEvent({
+    type: 'combat_hit',
+    originRoomId: player.currentRoomId,
+    range: 0,  // Only this room sees details
+    content: `${player.name} hits ${target.name} for ${damage} damage!`
+  });
+  
+  // If target dies
+  if (target.hp <= 0) {
+    eventBroadcaster.broadcastEvent({
+      type: 'death',
+      originRoomId: player.currentRoomId,
+      range: 2,  // Death screams carry 2 rooms
+      content: `${target.name} has died!`,
+      attenuated: `A death scream echoes from ${getDirectionTo(player.currentRoomId)}.`
+    });
+  }
+}
+
+// Player shouts
+async function handleShout(playerId: string, message: string) {
+  const player = getPlayer(playerId);
+  
+  eventBroadcaster.broadcastEvent({
+    type: 'shout',
+    originRoomId: player.currentRoomId,
+    range: 3,
+    content: `${player.name} shouts: "${message}"`,
+    attenuated: `Someone shouts in the distance: "${message}"`
+  });
+}
+```
+
+#### **Performance Optimization**
+
+**Cache room distances on server start:**
+```typescript
+// Precompute distances between all rooms (once)
+const roomGraph = new RoomGraph(allRooms);
+
+// Update cache when admin adds/removes rooms
+eventBus.on('room:created', () => roomGraph.rebuild());
+```
+
+**For 1000 rooms:**
+- BFS is O(V + E) ≈ O(1000) per event
+- With average 5 events/second across all rooms = 5000 operations/sec
+- Modern CPU can handle millions of operations/sec
+- **No problem for scale**
+
+#### **Socket.io Channel Usage: Minimal**
+
+```typescript
+// Only ONE channel used for game events:
+'admin:all'  // All admins subscribe to this for monitoring
+
+// Everything else: direct socket ID targeting
+io.to(socketId).emit('game:event', event);  // Specific player
+// NOT using room channels for game events
+
+// Why?
+// - Players get events via socket IDs (calculated by propagator)
+// - AI agents don't have sockets (use event queues instead)
+// - Admins use one channel (simpler for admin management)
+```
+
+**This architecture separates:**
+- **Game logic** (which actors are affected?) → EventPropagator
+- **Transport layer** (how to deliver?) → EventDeliverySystem
+- **AI reactivity** (what do AI agents do?) → AIAgentManager
+
+#### **Gameplay Benefits**
+
+This system enables rich atmospheric gameplay:
+
+```
+You're in the Tavern.
+> look
+
+Tavern. A cozy fireplace warms the room.
+You see: Bartender (NPC), Sarah (player)
+Exits: west (Town Square)
+
+You hear sounds of combat to the west.
+
+> go west
+
+Town Square. A fountain sits in the center.
+You see: Thorin (player), Goblin (NPC) - FIGHTING
+Exits: north, east, south, west
+
+Thorin is locked in combat with a goblin!
+
+> shout Help in the town square!
+
+You shout: "Help in the town square!"
+
+[Players in Tavern, Training Grounds, and Forest Path all hear the shout]
+```
+
+#### **Why This Must Be in Iteration 0**
+
+- **Refactoring later is painful**: Changing broadcast patterns across entire codebase
+- **Testing scales early**: Validates architecture with many rooms
+- **No performance surprises**: Know it scales from day 1
+- **Admin features depend on it**: Admin UI needs room-specific subscriptions
+
+**Bottom line:** With 1000+ players, Socket.io rooms are **non-negotiable**.
+
+---
+
+### **Database Scalability**
+- **Iteration 0-2:** SQLite (file-based, zero setup, perfect for development)
+- **Iteration 3+:** PostgreSQL (when adding AI, need better concurrent write handling)
 - Connection pooling for database
-- Rate limiting on commands (prevent spam)
+- Indexed lookups on frequently queried fields (roomId, characterId)
+
+### **API Rate Limiting**
+- Rate limiting on commands (prevent spam): 1 command per 500ms per player
 - AI request queuing to manage OpenAI API costs/limits
 
 ### **Data Consistency**
@@ -2158,21 +2756,26 @@ class AmbienceService {
 **Goal:** Two players can connect, move between rooms, and see each other.
 
 **Deliverables:**
+- [ ] Monorepo structure (packages/server, packages/client, packages/shared)
 - [ ] Basic Express + Socket.io server
+- [ ] Room graph system with distance calculation
+- [ ] Range-based event broadcasting (Socket.io rooms)
 - [ ] Hardcoded 3 rooms in memory (Town, Forest, Cave)
 - [ ] Basic React client with text feed and input
 - [ ] WebSocket connection handling
-- [ ] Commands: `look`, `go <direction>`, `say <message>`
+- [ ] Commands: `look`, `go <direction>`, `say <message>`, `shout <message>`
 - [ ] Real-time updates when players move/talk
+- [ ] `.env.example` with configuration
 
 **What You Can Do:**
 - Connect as "Player1" and "Player2"
 - Navigate between 3 rooms
 - See when others enter/leave
 - Chat with each other
+- Shout and hear it from adjacent rooms
 - See room descriptions
 
-**Validation:** Two people can explore and chat in real-time.
+**Validation:** Two people can explore and chat in real-time. Player in Tavern hears combat in Town Square (1 room away).
 
 **No Database Yet:** Everything in memory. Server restart = reset.
 
@@ -2182,14 +2785,16 @@ class AmbienceService {
 **Goal:** Add combat, items, and character death. Playable game loop exists.
 
 **Deliverables:**
-- [ ] Database (PostgreSQL + Prisma)
+- [ ] Database (SQLite + Prisma - file-based, zero setup)
+- [ ] Prisma schema for Character, Room, Item entities
 - [ ] Character creation (name, starting stats)
 - [ ] Inventory system
 - [ ] Items in rooms (take, drop, examine, equip)
 - [ ] Basic combat (attack command, HP, damage calculation)
 - [ ] Permadeath (character dies, create new one)
-- [ ] 5-room starter world with items
+- [ ] 5-room starter world with items (seeded to database)
 - [ ] Hardcoded "Goblin" enemy (non-AI, scripted responses)
+- [ ] Combat events propagate to adjacent rooms ("You hear sounds of combat nearby")
 
 **What You Can Do:**
 - Create a character
@@ -2198,10 +2803,13 @@ class AmbienceService {
 - Fight a goblin
 - Die (permanently) and create new character
 - See other players' actions in real-time
+- Hear combat from adjacent rooms
 
 **Validation:** Complete a 10-minute session: explore → find weapon → fight goblin → die or win → share experience with another player.
 
 **Still No AI:** Goblin has scripted responses ("Goblin attacks you!", "Goblin dies!").
+
+**Database:** SQLite file in `packages/server/dev.db` (gitignored).
 
 ---
 
@@ -2229,22 +2837,28 @@ class AmbienceService {
 **Goal:** One NPC comes alive with AI.
 
 **Deliverables:**
-- [ ] OpenAI API integration
+- [ ] Migrate database: SQLite → PostgreSQL (better concurrent writes for AI)
+- [ ] OpenAI API integration with environment variables
+- [ ] OpenAI cost controls (token limits, rate limiting, daily budget)
 - [ ] AI Agent system (basic)
 - [ ] Town Crier NPC (AI-powered)
 - [ ] Simple memory (Tier 1: relationship tracking only)
-- [ ] Constrained output (max length, JSON schema)
+- [ ] Constrained output (max 150 tokens, JSON schema)
 - [ ] AI can talk and remember you
+- [ ] Template + LLM hybrid system (70/30 split)
 
 **What You Can Do:**
 - Talk to Town Crier
 - Town Crier remembers your name
 - Town Crier responds differently based on familiarity
 - Town Crier provides hints about the world
+- See occasional LLM-generated responses mixed with templates
 
-**Validation:** Have a 5-turn conversation with Town Crier that feels natural and remembers context.
+**Validation:** Have a 5-turn conversation with Town Crier that feels natural and remembers context. API costs stay under $0.10 for the session.
 
 **Keep It Simple:** No proactive AI behavior yet. AI only responds when spoken to.
+
+**Database Migration:** Prisma migrate from SQLite to PostgreSQL is straightforward - just update DATABASE_URL.
 
 ---
 
