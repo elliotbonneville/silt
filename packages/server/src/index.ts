@@ -39,10 +39,10 @@ const gameEngine = new GameEngine(io);
 io.on('connection', (socket) => {
   console.info(`Client connected: ${socket.id}`);
 
-  // Get list of characters for an account
-  socket.on('character:list', async (data: { accountId: string }, callback) => {
+  // Get list of characters for a username
+  socket.on('character:list', async (data: { username: string }, callback) => {
     try {
-      const characters = await gameEngine.getCharactersForAccount(data.accountId);
+      const characters = await gameEngine.getCharactersForUsername(data.username);
       callback({ success: true, characters });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load characters';
@@ -51,9 +51,9 @@ io.on('connection', (socket) => {
   });
 
   // Create a new character
-  socket.on('character:create', async (data: { accountId: string; name: string }, callback) => {
+  socket.on('character:create', async (data: { username: string; name: string }, callback) => {
     try {
-      const character = await gameEngine.createNewCharacter(data.accountId, data.name);
+      const character = await gameEngine.createNewCharacter(data.username, data.name);
       callback({ success: true, character });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to create character';

@@ -5,5 +5,6 @@
 
 export * from './constants/game-constants.js';
 export * from './types/branded.js';
+export * from './types/character.js';
 export * from './types/events.js';
 export * from './types/player.js';

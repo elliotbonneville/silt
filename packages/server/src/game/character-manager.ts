@@ -8,6 +8,7 @@ import {
   createCharacter,
   findCharacterById,
   findCharactersByAccountId,
+  findOrCreateAccount,
   updateCharacter,
 } from '../database/index.js';
 import { createPlayerSession, type PlayerSession } from './player.js';
@@ -20,10 +21,13 @@ export class CharacterManager {
   constructor(private readonly world: World) {}
 
   /**
-   * Get characters for an account
+   * Get characters for a username
+   * Creates account if it doesn't exist
    */
-  async getCharactersForAccount(accountId: string): Promise<CharacterListItem[]> {
-    const characters = await findCharactersByAccountId(accountId);
+  async getCharactersForUsername(username: string): Promise<CharacterListItem[]> {
+    const account = await findOrCreateAccount(username);
+    const characters = await findCharactersByAccountId(account.id);
+
     return characters.map((char): CharacterListItem => {
       const item: CharacterListItem = {
         id: char.id,
@@ -41,14 +45,15 @@ export class CharacterManager {
   }
 
   /**
-   * Create a new character
+   * Create a new character for a username
    */
-  async createNewCharacter(accountId: string, name: string): Promise<Character> {
+  async createNewCharacter(username: string, name: string): Promise<Character> {
+    const account = await findOrCreateAccount(username);
     const startingRoomId = this.world.getStartingRoomId();
 
     const character = await createCharacter({
       name,
-      accountId,
+      accountId: account.id,
       spawnRoomId: startingRoomId,
     });
 

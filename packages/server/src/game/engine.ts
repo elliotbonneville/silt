@@ -57,20 +57,20 @@ export class GameEngine {
   }
 
   /**
-   * Get characters for an account
+   * Get characters for a username
    */
-  async getCharactersForAccount(accountId: string): Promise<CharacterListItem[]> {
-    return await this.characterManager.getCharactersForAccount(accountId);
+  async getCharactersForUsername(username: string): Promise<CharacterListItem[]> {
+    return await this.characterManager.getCharactersForUsername(username);
   }
 
   /**
-   * Create a new character
+   * Create a new character for a username
    */
-  async createNewCharacter(accountId: string, name: string): Promise<Character> {
+  async createNewCharacter(username: string, name: string): Promise<Character> {
     if (!this.initialized) {
       throw new Error('Game engine not initialized');
     }
-    return await this.characterManager.createNewCharacter(accountId, name);
+    return await this.characterManager.createNewCharacter(username, name);
   }
 
   /**
