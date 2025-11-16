@@ -98,12 +98,8 @@ export class GameEngine {
     this.roomGraph = new RoomGraph(this.world.getAllRooms());
     this.eventPropagator = new EventPropagator(this.roomGraph, this.actorRegistry);
 
-    // Initialize handlers
-    this.commandHandler = new CommandHandler(
-      this.characterManager,
-      this.aiAgentManager,
-      this.eventPropagator,
-    );
+    // Initialize command handler
+    this.commandHandler = new CommandHandler(this.characterManager, this.eventPropagator);
 
     this.connectionHandler = new ConnectionHandler(
       this.io,
