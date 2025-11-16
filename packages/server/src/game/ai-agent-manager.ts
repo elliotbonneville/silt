@@ -7,6 +7,7 @@ import type { GameEvent } from '@silt/shared';
 import { findAllAIAgents } from '../database/index.js';
 import type { AIAction, AIService } from './ai/index.js';
 import { parseRelationships } from './ai/index.js';
+import { aiDebugLogger } from './ai-debug-logger.js';
 import { formatEventForAI } from './event-formatter.js';
 
 const MIN_RESPONSE_COOLDOWN_MS = 3000; // Minimum 3 seconds between responses
@@ -94,6 +95,13 @@ export class AIAgentManager {
       const roomContext = `${roomChars.length} people in room`;
 
       try {
+        // Log decision attempt
+        aiDebugLogger.log(agent.id, character.name, 'decision', {
+          queuedEvents: formattedEvents,
+          timeSinceLastAction,
+          roomContext,
+        });
+
         // LLM decides action
         const action = await this.aiService.decideAction(
           agent.systemPrompt,
@@ -105,10 +113,22 @@ export class AIAgentManager {
         );
 
         if (action) {
+          aiDebugLogger.log(agent.id, character.name, 'action', {
+            action: action.action,
+            arguments: action.arguments,
+            reasoning: action.reasoning,
+          });
+
           await this.executeAIAction(agent, character, action);
           this.lastResponseTime.set(agent.id, Date.now());
+        } else {
+          aiDebugLogger.log(agent.id, character.name, 'decision', {
+            result: 'No action chosen',
+            queuedEventsCount: formattedEvents.length,
+          });
         }
       } catch (error) {
+        aiDebugLogger.log(agent.id, character.name, 'error', { error: String(error) });
         console.error(`AI agent ${character.name} failed to decide action:`, error);
       }
     }
