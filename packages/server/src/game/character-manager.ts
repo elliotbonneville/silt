@@ -6,6 +6,7 @@ import type { Character } from '@prisma/client';
 import type { CharacterListItem } from '@silt/shared';
 import {
   createCharacter,
+  deleteCharacter,
   findCharacterById,
   findCharactersByAccountId,
   findOrCreateAccount,
@@ -124,5 +125,28 @@ export class CharacterManager {
    */
   getCharacter(characterId: string): Character | undefined {
     return this.activeCharacters.get(characterId);
+  }
+
+  /**
+   * Retire (permanently delete) a character
+   */
+  async retireCharacter(characterId: string): Promise<void> {
+    const character = await findCharacterById(characterId);
+    if (!character) {
+      throw new Error('Character not found');
+    }
+
+    // Remove from active characters if loaded
+    this.activeCharacters.delete(characterId);
+
+    // Remove player session if connected
+    for (const [socketId, session] of this.playerSessions.entries()) {
+      if (session.characterId === characterId) {
+        this.playerSessions.delete(socketId);
+      }
+    }
+
+    // Hard delete from database
+    await deleteCharacter(characterId);
   }
 }

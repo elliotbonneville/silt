@@ -1,31 +1,14 @@
 /**
  * REST API client for character management
- * Types match server-side Zod schemas (single source of truth: Prisma → Zod)
+ * Types are imported from @silt/shared (single source of truth: Prisma → Zod → Shared)
  */
 
+import type { CharacterListItem, CharacterResponse } from '@silt/shared';
+
+// Re-export types for convenience
+export type { CharacterListItem, CharacterResponse };
+
 const API_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3000';
-
-export interface CharacterListItem {
-  id: string;
-  name: string;
-  isAlive: boolean;
-  hp: number;
-  maxHp: number;
-  createdAt: string;
-  diedAt?: string;
-}
-
-export interface CharacterResponse {
-  id: string;
-  name: string;
-  isAlive: boolean;
-  hp: number;
-  maxHp: number;
-  currentRoomId?: string;
-  attackPower?: number;
-  defense?: number;
-  createdAt?: string;
-}
 
 /**
  * List all characters for an account
@@ -68,4 +51,18 @@ export async function getCharacter(id: string): Promise<CharacterResponse> {
   }
   const data = await response.json();
   return data.character;
+}
+
+/**
+ * Retire (delete) a character
+ */
+export async function retireCharacter(id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/api/characters/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to retire character');
+  }
 }

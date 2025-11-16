@@ -9,5 +9,5 @@
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "src/database/generated/**"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

@@ -4,33 +4,11 @@
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createBrowserRouter, RouterProvider } from 'react-router';
-import { CharactersPage } from './routes/characters.js';
-import { GameRoute } from './routes/game.js';
-import { RootLayout } from './routes/root.js';
-import { UsernamePage } from './routes/username.js';
+import { BrowserRouter, Route, Routes } from 'react-router';
+import CharactersRoute from './routes/characters.js';
+import GameRoute from './routes/game.js';
+import UsernameRoute from './routes/username.js';
 import './index.css';
-
-const router = createBrowserRouter([
-  {
-    path: '/',
-    element: <RootLayout />,
-    children: [
-      {
-        index: true,
-        element: <UsernamePage />,
-      },
-      {
-        path: 'characters',
-        element: <CharactersPage />,
-      },
-      {
-        path: 'game/:characterId',
-        element: <GameRoute />,
-      },
-    ],
-  },
-]);
 
 const rootElement = document.getElementById('root');
 
@@ -40,6 +18,12 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<UsernameRoute />} />
+        <Route path="characters" element={<CharactersRoute />} />
+        <Route path="game/:characterId" element={<GameRoute />} />
+      </Routes>
+    </BrowserRouter>
   </StrictMode>,
 );

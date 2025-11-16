@@ -1,45 +1,51 @@
 /**
  * Game route - main gameplay screen
+ * Only route that connects to WebSocket
  */
 
-import type { Character } from '@silt/shared';
+import type { CharacterResponse } from '@silt/shared';
 import { useEffect, useState } from 'react';
-import { useNavigate, useOutletContext, useParams } from 'react-router';
-import type { Socket } from 'socket.io-client';
+import { useNavigate, useParams } from 'react-router';
 import { CommandInput } from '../components/CommandInput.js';
 import { GameTerminal } from '../components/GameTerminal.js';
+import { useSocket } from '../hooks/useSocket.js';
 
-interface SocketContext {
-  socket: Socket | null;
-  isConnected: boolean;
-  events: readonly import('@silt/shared').GameEvent[];
-  error: string | null;
-}
-
-export function GameRoute(): JSX.Element {
-  const { socket, events, error } = useOutletContext<SocketContext>();
+export default function GameRoute(): JSX.Element {
+  const { socket, events, error, isConnected } = useSocket();
   const { characterId } = useParams<{ characterId: string }>();
   const navigate = useNavigate();
-  const [character, setCharacter] = useState<Character | null>(null);
+  const [character, setCharacter] = useState<CharacterResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Connect to character when socket is ready
   useEffect(() => {
-    if (!socket || !characterId) return;
+    if (!socket || !characterId || !isConnected) return;
 
     socket.emit(
       'character:select',
       { characterId },
-      (response: { success: boolean; character?: Character; error?: string }) => {
+      (response: { success: boolean; character?: CharacterResponse; error?: string }) => {
         setLoading(false);
         if (response.success && response.character) {
           setCharacter(response.character);
         } else {
-          console.error('Failed to select character:', response.error);
           navigate('/');
         }
       },
     );
-  }, [socket, characterId, navigate]);
+  }, [socket, characterId, navigate, isConnected]);
+
+  // Wait for socket connection
+  if (!isConnected) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-900 text-green-400">
+        <div className="text-center">
+          <div className="mb-4 text-2xl">Connecting to server...</div>
+          <div className="animate-pulse">⟳</div>
+        </div>
+      </div>
+    );
+  }
 
   const handleCommand = (command: string): void => {
     if (!socket) return;

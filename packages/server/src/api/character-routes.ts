@@ -3,7 +3,7 @@
  */
 
 import type { Request, Response, Router } from 'express';
-import { findCharactersByAccountId } from '../database/index.js';
+import { findAccountByUsername, findCharactersByAccountId } from '../database/index.js';
 import type { CharacterManager } from '../game/character-manager.js';
 import { CreateCharacterRequestSchema } from './schemas.js';
 
@@ -20,7 +20,14 @@ export function setupCharacterRoutes(router: Router, characterManager: Character
         return;
       }
 
-      const characters = await findCharactersByAccountId(username);
+      // Look up account by username first
+      const account = await findAccountByUsername(username);
+      if (!account) {
+        res.json({ success: true, characters: [] });
+        return;
+      }
+
+      const characters = await findCharactersByAccountId(account.id);
 
       res.json({
         success: true,
@@ -63,6 +70,20 @@ export function setupCharacterRoutes(router: Router, characterManager: Character
           error: parseResult.error.issues[0]?.message || 'Invalid request',
         });
         return;
+      }
+
+      // Check character slot limit (5 alive characters max)
+      const account = await findAccountByUsername(username);
+      if (account) {
+        const characters = await findCharactersByAccountId(account.id);
+        const aliveCount = characters.filter((c) => c.isAlive).length;
+        if (aliveCount >= 5) {
+          res.status(400).json({
+            success: false,
+            error: 'Maximum character limit reached (5). Please retire a character first.',
+          });
+          return;
+        }
       }
 
       const { name } = parseResult.data;
@@ -128,6 +149,33 @@ export function setupCharacterRoutes(router: Router, characterManager: Character
       res.status(500).json({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to get character',
+      });
+    }
+  });
+
+  /**
+   * DELETE /api/characters/:id
+   * Retire (soft delete) a character
+   */
+  router.delete('/api/characters/:id', async (req: Request, res: Response) => {
+    try {
+      const id = req.params['id'];
+      if (!id) {
+        res.status(400).json({ success: false, error: 'Character ID is required' });
+        return;
+      }
+
+      await characterManager.retireCharacter(id);
+
+      res.json({
+        success: true,
+        message: 'Character retired successfully',
+      });
+    } catch (error) {
+      console.error('Failed to retire character:', error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to retire character',
       });
     }
   });

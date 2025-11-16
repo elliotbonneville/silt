@@ -17,16 +17,3 @@ export interface Player {
   isAlive: boolean;
   readonly connectedAt: Date;
 }
-
-/**
- * Character list item for character selection
- */
-export interface CharacterListItem {
-  readonly id: string;
-  readonly name: string;
-  readonly isAlive: boolean;
-  readonly hp: number;
-  readonly maxHp: number;
-  readonly createdAt: string;
-  readonly diedAt?: string | undefined;
-}
