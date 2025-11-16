@@ -20,10 +20,10 @@ export class CommandHandler {
     // Broadcast all events
     // Events are automatically queued for AI agents via EventPropagator
     // AI processes them in the unified proactive loop every 10 seconds
-    this.eventPropagator.broadcastMany(result.events);
+    await this.eventPropagator.broadcastMany(result.events);
 
     // Handle character stat updates
-    this.handleStatUpdates(result, character);
+    await this.handleStatUpdates(result, character);
 
     // Handle death
     await this.handleDeath(result);
@@ -32,16 +32,16 @@ export class CommandHandler {
   /**
    * Handle character stat updates
    */
-  private handleStatUpdates(result: CommandResult, character: Character): void {
+  private async handleStatUpdates(result: CommandResult, character: Character): Promise<void> {
     const combatEvent = result.events.find((e) => e.type === 'combat_hit');
     const hasEquipment = result.events.some((e) => e.type === 'item_equip' || e.type === 'system');
 
     if (combatEvent || hasEquipment) {
-      this.characterManager.sendCharacterUpdate(character.id);
+      await this.characterManager.sendCharacterUpdate(character.id);
 
       const targetId = combatEvent?.data?.['targetId'];
       if (typeof targetId === 'string') {
-        this.characterManager.sendCharacterUpdate(targetId);
+        await this.characterManager.sendCharacterUpdate(targetId);
       }
     }
   }

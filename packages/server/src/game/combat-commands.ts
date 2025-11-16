@@ -2,9 +2,8 @@
  * Combat command system - attack and defense commands
  */
 
-import type { Character } from '@prisma/client';
 import type { GameEvent } from '@silt/shared';
-import { updateCharacter } from '../database/character-repository.js';
+import { findCharacterInRoom, updateCharacter } from '../database/character-repository.js';
 import { createItem, findItemsInInventory, moveItemToRoom } from '../database/item-repository.js';
 import type { CommandContext, CommandResult } from './commands.js';
 import { createEvent } from './create-game-event.js';
@@ -17,12 +16,11 @@ const ATTACK_COOLDOWN_MS = 2000; // 2 seconds between attacks
 export async function executeAttackCommand(
   ctx: CommandContext,
   targetName: string,
-  getCharacterInRoom: (roomId: string, name: string) => Character | undefined,
 ): Promise<CommandResult> {
   if (!targetName) return { success: false, events: [], error: 'Attack who?' };
 
   const attacker = ctx.character;
-  const target = getCharacterInRoom(attacker.currentRoomId, targetName);
+  const target = await findCharacterInRoom(attacker.currentRoomId, targetName);
 
   if (!target) {
     return { success: false, events: [], error: `You don't see "${targetName}" here.` };
@@ -57,12 +55,10 @@ export async function executeAttackCommand(
 
   // Apply damage to target
   const newHp = Math.max(0, target.hp - damage);
-  target.hp = newHp; // Update in-memory object
   await updateCharacter(target.id, { hp: newHp });
 
   // Update attacker cooldown
   const newLastAction = new Date(now);
-  attacker.lastActionAt = newLastAction; // Update in-memory object
   await updateCharacter(attacker.id, { lastActionAt: newLastAction });
 
   const roomId = attacker.currentRoomId;
@@ -83,8 +79,6 @@ export async function executeAttackCommand(
 
   // Check for death
   if (newHp === 0) {
-    target.isAlive = false; // Update in-memory object
-    target.isDead = true; // Update in-memory object
     await updateCharacter(target.id, {
       isAlive: false,
       isDead: true,

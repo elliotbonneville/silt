@@ -1,6 +1,6 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.3.5/schema.json",
-  "plugins": [".biome-plugins/no-type-assertions.grit"],
+  "plugins": [".biome-plugins/no-type-assertions.grit", ".biome-plugins/no-dynamic-imports.grit"],
   "files": {
     "includes": ["**", "!!**/.vscode", "!!**/node_modules", "!!**/dist", "!!**/build"],
     "ignoreUnknown": true

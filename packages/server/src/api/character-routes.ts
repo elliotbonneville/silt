@@ -3,7 +3,11 @@
  */
 
 import type { Request, Response, Router } from 'express';
-import { findAccountByUsername, findCharactersByAccountId } from '../database/index.js';
+import {
+  findAccountByUsername,
+  findCharacterById,
+  findCharactersByAccountId,
+} from '../database/index.js';
 import type { CharacterManager } from '../game/character-manager.js';
 import { CreateCharacterRequestSchema } from './schemas.js';
 
@@ -121,7 +125,7 @@ export function setupCharacterRoutes(router: Router, characterManager: Character
         return;
       }
 
-      const character = characterManager.getCharacter(id);
+      const character = await findCharacterById(id);
 
       if (!character) {
         res.status(404).json({

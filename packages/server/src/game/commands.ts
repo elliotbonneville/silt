@@ -15,12 +15,9 @@ import {
 } from './inventory-commands.js';
 import { executeGoCommand, executeLookCommand } from './navigation-commands.js';
 import { executeEmoteCommand, executeSayCommand, executeShoutCommand } from './social-commands.js';
-import type { World } from './world.js';
 
 export interface CommandContext {
   readonly character: Character;
-  readonly world: World;
-  readonly getCharacterInRoom: (roomId: string, name: string) => Character | undefined;
 }
 
 export interface CommandResult {
@@ -129,7 +126,7 @@ export async function parseAndExecuteCommand(
     case 'kill':
     case 'fight':
     case 'hit':
-      return await executeAttackCommand(ctx, args.join(' '), ctx.getCharacterInRoom);
+      return await executeAttackCommand(ctx, args.join(' '));
 
     default:
       return { success: false, events: [], error: `Unknown command: ${command}` };

@@ -4,7 +4,7 @@
 
 import type { AIAgent, Character } from '@prisma/client';
 import type { GameEvent } from '@silt/shared';
-import { findAllAIAgents } from '../database/index.js';
+import { findAllAIAgents, findCharactersInRoom, updateAIAgent } from '../database/index.js';
 import type { AIAction, AIService } from './ai/index.js';
 import { parseRelationships } from './ai/index.js';
 import { aiDebugLogger } from './ai-debug-logger.js';
@@ -13,15 +13,12 @@ const MIN_RESPONSE_COOLDOWN_MS = 3000; // Minimum 3 seconds between responses
 const EVENT_CONTEXT_WINDOW_MS = 30000; // Consider events from last 30 seconds
 
 export class AIAgentManager {
-  private agents = new Map<string, AIAgent>(); // characterId → AIAgent
-  private lastResponseTime = new Map<string, number>(); // agentId → timestamp
-  private agentEventQueues = new Map<string, GameEvent[]>(); // agentId → event queue
+  private agentEventQueues = new Map<string, GameEvent[]>(); // agentId → event queue (30s buffer)
   private proactiveLoopTimer: NodeJS.Timeout | undefined = undefined;
 
   constructor(
     private readonly aiService: AIService,
-    private readonly getCharacter: (id: string) => Character | undefined,
-    private readonly getCharactersInRoom: (roomId: string) => Character[],
+    private readonly getCharacter: (id: string) => Promise<Character | null>,
     private readonly executeAIAction: (
       agent: AIAgent,
       character: Character,
@@ -30,16 +27,10 @@ export class AIAgentManager {
   ) {}
 
   /**
-   * Load all AI agents from database
+   * Load all AI agents from database (for initialization)
    */
   async loadAgents(): Promise<AIAgent[]> {
-    const agents = await findAllAIAgents();
-    for (const agent of agents) {
-      this.agents.set(agent.characterId, agent);
-      // Initialize response time to now (prevents huge timeSinceLastAction)
-      this.lastResponseTime.set(agent.id, Date.now());
-    }
-    return agents;
+    return await findAllAIAgents();
   }
 
   /**
@@ -72,26 +63,31 @@ export class AIAgentManager {
    * Process all agents - UNIFIED decision loop
    */
   private async processProactiveActions(): Promise<void> {
-    for (const [characterId, agent] of this.agents.entries()) {
-      const character = this.getCharacter(characterId);
+    // Query all agents from DB (always fresh)
+    const agents = await findAllAIAgents();
+
+    for (const agent of agents) {
+      const character = await this.getCharacter(agent.characterId);
       if (!character || !character.isAlive) continue;
 
       // Filter: Only agents in rooms with players
-      const roomChars = this.getCharactersInRoom(character.currentRoomId);
+      const roomChars = await findCharactersInRoom(character.currentRoomId);
       const hasPlayers = roomChars.some((c) => c.accountId !== null);
       if (!hasPlayers) continue;
 
-      // Filter: Cooldown check
-      if (!this.canRespond(agent.id)) continue;
+      // Filter: Cooldown check (query DB for latest lastActionAt)
+      const now = Date.now();
+      const lastActionTime = agent.lastActionAt.getTime();
+      const timeSinceLastAction = now - lastActionTime;
+      if (timeSinceLastAction < MIN_RESPONSE_COOLDOWN_MS) continue;
 
       // Filter: Must have queued events
-      const queuedEvents = this.getQueuedEvents(characterId);
+      const queuedEvents = this.getQueuedEvents(agent.characterId);
       if (queuedEvents.length === 0) continue;
 
       // Process queued events (already formatted by EventPropagator with agent's perspective)
       const formattedEvents = queuedEvents.map((e) => e.content || 'Something happened.');
-      const lastAction = this.lastResponseTime.get(agent.id) || 0;
-      const timeSinceLastAction = Math.floor((Date.now() - lastAction) / 1000);
+      const timeSinceLastActionSec = Math.floor(timeSinceLastAction / 1000);
       const relationships = parseRelationships(agent.relationshipsJson);
       const roomContext = `${roomChars.length} people in room`;
 
@@ -99,7 +95,7 @@ export class AIAgentManager {
         // Log decision attempt
         aiDebugLogger.log(agent.id, character.name, 'decision', {
           queuedEvents: formattedEvents,
-          timeSinceLastAction,
+          timeSinceLastAction: timeSinceLastActionSec,
           roomContext,
         });
 
@@ -109,7 +105,7 @@ export class AIAgentManager {
           character.name,
           formattedEvents,
           relationships,
-          timeSinceLastAction,
+          timeSinceLastActionSec,
           roomContext,
         );
 
@@ -121,7 +117,9 @@ export class AIAgentManager {
           });
 
           await this.executeAIAction(agent, character, action);
-          this.lastResponseTime.set(agent.id, Date.now());
+
+          // Update lastActionAt in database
+          await updateAIAgent(agent.id, { lastActionAt: new Date() });
         } else {
           aiDebugLogger.log(agent.id, character.name, 'decision', {
             result: 'No action chosen',
@@ -164,15 +162,6 @@ export class AIAgentManager {
     const queue = this.agentEventQueues.get(agentId) || [];
     const cutoff = Date.now() - EVENT_CONTEXT_WINDOW_MS;
     return queue.filter((e: GameEvent) => e.timestamp > cutoff);
-  }
-
-  /**
-   * Check if agent can respond (cooldown check)
-   */
-  private canRespond(agentId: string): boolean {
-    const lastResponse = this.lastResponseTime.get(agentId) || 0;
-    const now = Date.now();
-    return now - lastResponse >= MIN_RESPONSE_COOLDOWN_MS;
   }
 
   /**

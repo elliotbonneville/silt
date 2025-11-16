@@ -73,7 +73,7 @@ io.on('connection', (socket) => {
   socket.on('character:select', async (data: { characterId: string }, callback) => {
     try {
       const character = await gameEngine.connectPlayerToCharacter(socket.id, data.characterId);
-      const initialRoom = gameEngine.getCharacterRoomState(character.id);
+      const initialRoom = await gameEngine.getCharacterRoomState(character.id);
 
       callback({ success: true, character, initialRoom });
     } catch (error) {

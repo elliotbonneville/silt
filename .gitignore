@@ -21,6 +21,13 @@ dev.db
 packages/server/src/database/generated/
 packages/server/openapi.json
 
+# Compiled TypeScript files in src (should only be in dist)
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts.map
+packages/*/src/**/*.d.ts
+!packages/*/src/**/vite-env.d.ts
+
 # Logs
 logs/
 *.log

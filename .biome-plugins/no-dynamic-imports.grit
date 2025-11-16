@@ -1,0 +1,11 @@
+// Ban all dynamic imports
+// Use biome-ignore noDynamicImport to bypass this rule if absolutely necessary
+or {
+  `await import($_)` as $dynImport where {
+    register_diagnostic(span=$dynImport, message="Dynamic imports are forbidden. Use static imports at the top of the file instead.", severity="error")
+  },
+  `import($_)` as $dynImport where {
+    ! $dynImport <: `await import($_)`,
+    register_diagnostic(span=$dynImport, message="Dynamic imports are forbidden. Use static imports at the top of the file instead.", severity="error")
+  }
+}

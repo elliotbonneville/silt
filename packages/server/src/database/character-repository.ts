@@ -152,3 +152,29 @@ export async function deleteCharacter(id: string): Promise<void> {
 export async function findAllCharacters(): Promise<Character[]> {
   return prisma.character.findMany();
 }
+
+/**
+ * Find character in a room by name
+ */
+export async function findCharacterInRoom(roomId: string, name: string): Promise<Character | null> {
+  const nameLower = name.toLowerCase();
+  const characters = await prisma.character.findMany({
+    where: {
+      currentRoomId: roomId,
+      isAlive: true,
+    },
+  });
+  return characters.find((c) => c.name.toLowerCase() === nameLower) || null;
+}
+
+/**
+ * Find all characters in a room
+ */
+export async function findCharactersInRoom(roomId: string): Promise<Character[]> {
+  return await prisma.character.findMany({
+    where: {
+      currentRoomId: roomId,
+      isAlive: true,
+    },
+  });
+}

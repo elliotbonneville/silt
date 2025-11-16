@@ -3,7 +3,13 @@
  */
 
 import type { Express } from 'express';
-import { getEventCount, queryGameEvents } from '../database/event-repository.js';
+import {
+  findAllCharacters,
+  findAllItems,
+  findAllRooms,
+  getEventCount,
+  queryGameEvents,
+} from '../database/index.js';
 
 export function setupAdminRoutes(app: Express): void {
   /**
@@ -11,10 +17,6 @@ export function setupAdminRoutes(app: Express): void {
    */
   app.get('/admin/map', async (_req, res) => {
     try {
-      const { findAllRooms } = await import('../database/room-repository.js');
-      const { findAllCharacters } = await import('../database/character-repository.js');
-      const { findAllItems } = await import('../database/item-repository.js');
-
       const [rooms, characters, items] = await Promise.all([
         findAllRooms(),
         findAllCharacters(),

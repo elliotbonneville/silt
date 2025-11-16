@@ -62,10 +62,11 @@ npm run check-all         # Run everything
 ### The Rules (Zero Exceptions)
 
 1. **No `any`, `as`, `!`, `@ts-ignore`** - Use type narrowing
-2. **300 line maximum** per file - Split when approaching 250
-3. **80% test coverage** minimum - 95% on critical paths
-4. **Small commits** - 50-100 lines ideal, 200 max
-5. **Biome only** - No ESLint, no Prettier
+2. **No dynamic imports** (`await import()` or `import()`) - Use static imports at the top of files
+3. **300 line maximum** per file - Split when approaching 250
+4. **80% test coverage** minimum - 95% on critical paths
+5. **Small commits** - 50-100 lines ideal, 200 max
+6. **Biome only** - No ESLint, no Prettier
 
 See `.cursor/rules/main.mdc` for complete standards.
 
@@ -283,6 +284,9 @@ function process(value: unknown) {
   throw new Error('Expected string');
 }
 ```
+
+### Q: Can I use dynamic imports to avoid circular dependencies?
+**A: No.** Refactor your module structure instead. Use dependency injection, extract shared types to a separate file, or restructure your imports. Dynamic imports make code harder to analyze and can hide circular dependency issues that should be fixed at the architecture level.
 
 ### Q: My file is approaching 300 lines. What do I do?
 **A: Stop and refactor immediately.** Extract functions, create new modules, split responsibilities. This is non-negotiable.

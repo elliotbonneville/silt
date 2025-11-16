@@ -6,9 +6,12 @@
 import type { AIAgent, Character } from '@prisma/client';
 import type { CharacterListItem, RoomState } from '@silt/shared';
 import type { Server } from 'socket.io';
-import { updateCharacter } from '../database/character-repository.js';
-import { AIAgentActor } from './actor-interface.js';
-import { ActorRegistry } from './actor-registry.js';
+import {
+  findCharacterById,
+  findCharactersInRoom,
+  updateCharacter,
+} from '../database/character-repository.js';
+import { findRoomById } from '../database/room-repository.js';
 import type { AIAction } from './ai/index.js';
 import { AIService } from './ai/index.js';
 import { AIAgentManager } from './ai-agent-manager.js';
@@ -18,24 +21,18 @@ import { CommandHandler } from './command-handler.js';
 import { type CommandContext, parseAndExecuteCommand } from './commands.js';
 import { ConnectionHandler } from './connection-handler.js';
 import { EventPropagator } from './event-propagator.js';
-import { RoomGraph } from './room-graph.js';
-import { World } from './world.js';
+import { transformRoom } from './room-formatter.js';
 
 export class GameEngine {
-  private readonly world: World;
   readonly characterManager: CharacterManager;
-  private readonly actorRegistry: ActorRegistry;
   private readonly aiAgentManager: AIAgentManager;
-  private roomGraph!: RoomGraph;
   private eventPropagator!: EventPropagator;
   private commandHandler!: CommandHandler;
   private connectionHandler!: ConnectionHandler;
   private initialized = false;
 
   constructor(private readonly io: Server) {
-    this.world = new World();
-    this.characterManager = new CharacterManager(this.world);
-    this.actorRegistry = new ActorRegistry();
+    this.characterManager = new CharacterManager(this.io);
 
     // Initialize AI service
     const apiKey = process.env['OPENAI_API_KEY'];
@@ -46,8 +43,7 @@ export class GameEngine {
     const aiService = new AIService(apiKey);
     this.aiAgentManager = new AIAgentManager(
       aiService,
-      (id: string) => this.characterManager.getCharacter(id),
-      (roomId: string) => this.characterManager.getCharactersInRoom(roomId),
+      async (id: string) => await findCharacterById(id),
       async (agent, character, action) => {
         await this.executeAIAction(agent, character, action);
       },
@@ -61,44 +57,12 @@ export class GameEngine {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    // Load world from database
-    await this.world.initialize();
-
-    // Load NPC characters into memory
-    const npcs = await this.characterManager.loadNPCs();
-
-    // Load AI agents and create actor instances
+    // Load AI agents
     const aiAgents = await this.aiAgentManager.loadAgents();
-    const aiAgentCharacterIds = new Set(aiAgents.map((a) => a.characterId));
-
-    for (const npc of npcs) {
-      // Create AI actor if this NPC has AI agent data
-      if (aiAgentCharacterIds.has(npc.id)) {
-        const aiActor = new AIAgentActor(npc.id, this.aiAgentManager);
-        this.actorRegistry.addAIAgent(npc.id, npc.currentRoomId, aiActor);
-      } else {
-        // Regular NPC without AI (like Training Dummy) - no actor instance needed yet
-        this.actorRegistry.addAIAgent(npc.id, npc.currentRoomId, {
-          id: npc.id,
-          actorType: 'ai_agent',
-          handleEvent: () => {}, // No-op for non-AI NPCs
-        });
-      }
-    }
-
     console.info(`✅ Loaded ${aiAgents.length} AI agents`);
 
-    // Set up player lookup for room descriptions
-    this.world.setPlayerLookupFunction((roomId) =>
-      Array.from(this.actorRegistry.getActorsInRoom(roomId))
-        .map((id) => this.characterManager.getCharacter(id))
-        .filter((char) => char !== null && char !== undefined)
-        .map((char) => ({ name: char.name })),
-    );
-
-    // Build room graph and event propagator
-    this.roomGraph = new RoomGraph(this.world.getAllRooms());
-    this.eventPropagator = new EventPropagator(this.roomGraph, this.actorRegistry, this.io);
+    // Initialize event propagator
+    this.eventPropagator = new EventPropagator(this.characterManager, this.aiAgentManager, this.io);
 
     // Initialize command handler
     this.commandHandler = new CommandHandler(this.characterManager, this.eventPropagator);
@@ -106,9 +70,7 @@ export class GameEngine {
     this.connectionHandler = new ConnectionHandler(
       this.io,
       this.characterManager,
-      this.actorRegistry,
       this.eventPropagator,
-      this.world,
     );
 
     // Set up AI debug logger to broadcast through event system
@@ -174,16 +136,13 @@ export class GameEngine {
    * Handle a command from a player
    */
   async handleCommand(socketId: string, commandText: string): Promise<void> {
-    const character = this.characterManager.getCharacterBySocketId(socketId);
+    const character = await this.characterManager.getCharacterBySocketId(socketId);
     if (!character) {
       throw new Error('Character not found');
     }
 
     const context: CommandContext = {
       character,
-      world: this.world,
-      getCharacterInRoom: (roomId: string, name: string) =>
-        this.characterManager.getCharacterInRoom(roomId, name),
     };
 
     const result = await parseAndExecuteCommand(commandText, context);
@@ -198,17 +157,9 @@ export class GameEngine {
       this.io.to(socketId).emit('game:output', result.output);
     }
 
-    // Handle movement
+    // Handle movement - persist character position to database
     const moveEvent = result.events.find((e) => e.type === 'movement');
     if (moveEvent?.data && this.isMovementData(moveEvent.data)) {
-      character.currentRoomId = moveEvent.data.toRoomId;
-      this.actorRegistry.moveActor(
-        character.id,
-        moveEvent.data.fromRoomId,
-        moveEvent.data.toRoomId,
-      );
-
-      // Persist character position to database
       await updateCharacter(character.id, { currentRoomId: moveEvent.data.toRoomId });
     }
 
@@ -232,24 +183,30 @@ export class GameEngine {
   /**
    * Get room state for a character
    */
-  getCharacterRoomState(characterId: string): RoomState {
-    const character = this.characterManager.getCharacter(characterId);
+  async getCharacterRoomState(characterId: string): Promise<RoomState> {
+    const character = await findCharacterById(characterId);
     if (!character) throw new Error('Character not found');
 
-    const room = this.world.getRoom(character.currentRoomId);
-    if (!room) throw new Error('Room not found');
+    const dbRoom = await findRoomById(character.currentRoomId);
+    if (!dbRoom) throw new Error('Room not found');
+    const room = transformRoom(dbRoom);
 
-    const occupants = Array.from(this.actorRegistry.getActorsInRoom(character.currentRoomId))
-      .filter((id) => id !== characterId)
-      .map((id) => this.characterManager.getCharacter(id))
-      .filter((char): char is Character => char !== null && char !== undefined)
+    const charactersInRoom = await findCharactersInRoom(character.currentRoomId);
+    const occupants = charactersInRoom
+      .filter((char) => char.id !== characterId)
       .map((char) => ({ id: char.id, name: char.name, type: 'player' as const }));
 
-    const exits = Array.from(room.exits.entries()).map(([direction, targetId]) => ({
-      direction,
-      roomId: targetId,
-      roomName: this.world.getRoom(targetId)?.name || 'Unknown',
-    }));
+    const exitEntries = Array.from(room.exits.entries());
+    const exits = await Promise.all(
+      exitEntries.map(async ([direction, targetId]) => {
+        const targetDbRoom = await findRoomById(targetId);
+        return {
+          direction,
+          roomId: targetId,
+          roomName: targetDbRoom?.name || 'Unknown',
+        };
+      }),
+    );
 
     return {
       room: { id: room.id, name: room.name, description: room.description },
@@ -271,22 +228,14 @@ export class GameEngine {
 
     const context: CommandContext = {
       character,
-      world: this.world,
-      getCharacterInRoom: (roomId: string, name: string) =>
-        this.characterManager.getCharacterInRoom(roomId, name),
     };
 
     const result = await parseAndExecuteCommand(commandString, context);
 
-    // Handle movement
+    // Handle movement - persist character position to database
     const moveEvent = result.events.find((e) => e.type === 'movement');
     if (moveEvent?.data && this.isMovementData(moveEvent.data)) {
-      character.currentRoomId = moveEvent.data.toRoomId;
-      this.actorRegistry.moveActor(
-        character.id,
-        moveEvent.data.fromRoomId,
-        moveEvent.data.toRoomId,
-      );
+      await updateCharacter(character.id, { currentRoomId: moveEvent.data.toRoomId });
     }
 
     await this.commandHandler.processResults(result, character);

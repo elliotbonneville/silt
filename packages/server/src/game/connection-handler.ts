@@ -4,20 +4,16 @@
 
 import type { Character } from '@prisma/client';
 import type { Server } from 'socket.io';
-import { PlayerActor } from './actor-interface.js';
-import type { ActorRegistry } from './actor-registry.js';
 import type { CharacterManager } from './character-manager.js';
 import { createEvent } from './create-game-event.js';
 import type { EventPropagator } from './event-propagator.js';
-import type { World } from './world.js';
+import { getRoomData, getRoomDescription } from './room-formatter.js';
 
 export class ConnectionHandler {
   constructor(
     private readonly io: Server,
     private readonly characterManager: CharacterManager,
-    private readonly actorRegistry: ActorRegistry,
     private readonly eventPropagator: EventPropagator,
-    private readonly world: World,
   ) {}
 
   /**
@@ -26,12 +22,8 @@ export class ConnectionHandler {
   async connectPlayer(socketId: string, characterId: string): Promise<Character> {
     const character = await this.characterManager.connectPlayer(socketId, characterId);
 
-    // Create player actor instance
-    const playerActor = new PlayerActor(character.id, socketId, this.io);
-    this.actorRegistry.addPlayer(characterId, character.currentRoomId, socketId, playerActor);
-
     // Broadcast player entered event
-    this.eventPropagator.broadcast(
+    await this.eventPropagator.broadcast(
       createEvent('player_entered', character.currentRoomId, 'room', {
         actorId: character.id,
         actorName: character.name,
@@ -39,9 +31,9 @@ export class ConnectionHandler {
     );
 
     // Send initial room description as structured output
-    const roomData = await this.world.getRoomData(character.currentRoomId, character.name);
+    const roomData = await getRoomData(character.currentRoomId, character.name);
     if (roomData) {
-      const text = await this.world.getRoomDescription(character.currentRoomId, character.name);
+      const text = await getRoomDescription(character.currentRoomId, character.name);
       this.io.to(socketId).emit('game:output', {
         type: 'room',
         data: roomData,
@@ -59,13 +51,11 @@ export class ConnectionHandler {
     const character = await this.characterManager.disconnectPlayer(socketId);
     if (!character) return;
 
-    this.eventPropagator.broadcast(
+    await this.eventPropagator.broadcast(
       createEvent('player_left', character.currentRoomId, 'room', {
         actorId: character.id,
         actorName: character.name,
       }),
     );
-
-    this.actorRegistry.removeBySocketId(socketId);
   }
 }

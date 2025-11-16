@@ -5,32 +5,27 @@
 import type { Character } from '@prisma/client';
 import type { CharacterListItem } from '@silt/shared';
 import type { Server } from 'socket.io';
+import { prisma } from '../database/client.js';
 import {
   createCharacter,
   deleteCharacter,
   findCharacterById,
   findCharactersByAccountId,
   findOrCreateAccount,
-  updateCharacter,
 } from '../database/index.js';
+import { getDefaultSpawnPointId } from '../database/item-repository.js';
 import { createPlayerSession, type PlayerSession } from './player.js';
-import type { World } from './world.js';
 
 export class CharacterManager {
-  private readonly activeCharacters = new Map<string, Character>();
   private readonly playerSessions = new Map<string, PlayerSession>();
 
-  constructor(
-    private readonly world: World,
-    private readonly io?: Server,
-  ) {}
+  constructor(private readonly io?: Server) {}
 
   /**
-   * Load NPC characters into active memory (called on server start)
+   * Load NPC characters (called on server start)
+   * Returns NPCs but does not cache them
    */
   async loadNPCs(): Promise<Character[]> {
-    const { prisma } = await import('../database/client.js');
-
     // Find all characters without an accountId (NPCs)
     const npcs = await prisma.character.findMany({
       where: {
@@ -38,10 +33,6 @@ export class CharacterManager {
         isAlive: true,
       },
     });
-
-    for (const npc of npcs) {
-      this.activeCharacters.set(npc.id, npc);
-    }
 
     return npcs;
   }
@@ -75,7 +66,7 @@ export class CharacterManager {
    */
   async createNewCharacter(username: string, name: string): Promise<Character> {
     const account = await findOrCreateAccount(username);
-    const spawnPointId = await this.world.getDefaultSpawnPointId();
+    const spawnPointId = await getDefaultSpawnPointId();
 
     const character = await createCharacter({
       name,
@@ -103,77 +94,31 @@ export class CharacterManager {
     const session = createPlayerSession(socketId, characterId);
     this.playerSessions.set(socketId, session);
 
-    // Load character into active memory
-    this.activeCharacters.set(characterId, character);
-
     return character;
   }
 
   /**
-   * Disconnect a player and save character state
+   * Disconnect a player
    */
   async disconnectPlayer(socketId: string): Promise<Character | null> {
     const session = this.playerSessions.get(socketId);
     if (!session) return null;
 
-    const character = this.activeCharacters.get(session.characterId);
+    const character = await findCharacterById(session.characterId);
     if (!character) return null;
 
-    // Save character state to database
-    await updateCharacter(character.id, {
-      currentRoomId: character.currentRoomId,
-      hp: character.hp,
-      maxHp: character.maxHp,
-      attackPower: character.attackPower,
-      defense: character.defense,
-      isAlive: character.isAlive,
-      lastActionAt: new Date(),
-    });
-
-    this.activeCharacters.delete(session.characterId);
     this.playerSessions.delete(socketId);
 
     return character;
   }
 
   /**
-   * Get character by socket ID
+   * Get character by socket ID (queries Prisma)
    */
-  getCharacterBySocketId(socketId: string): Character | undefined {
+  async getCharacterBySocketId(socketId: string): Promise<Character | null> {
     const session = this.playerSessions.get(socketId);
-    if (!session) return undefined;
-    return this.activeCharacters.get(session.characterId);
-  }
-
-  /**
-   * Get character by ID
-   */
-  getCharacter(characterId: string): Character | undefined {
-    return this.activeCharacters.get(characterId);
-  }
-
-  /**
-   * Get character in a room by name
-   */
-  getCharacterInRoom(roomId: string, name: string): Character | undefined {
-    for (const character of this.activeCharacters.values()) {
-      if (
-        character.currentRoomId === roomId &&
-        character.name.toLowerCase() === name.toLowerCase()
-      ) {
-        return character;
-      }
-    }
-    return undefined;
-  }
-
-  /**
-   * Get all characters in a room
-   */
-  getCharactersInRoom(roomId: string): Character[] {
-    return Array.from(this.activeCharacters.values()).filter(
-      (char) => char.currentRoomId === roomId,
-    );
+    if (!session) return null;
+    return await findCharacterById(session.characterId);
   }
 
   /**
@@ -191,10 +136,10 @@ export class CharacterManager {
   /**
    * Send character stat update to client
    */
-  sendCharacterUpdate(characterId: string): void {
+  async sendCharacterUpdate(characterId: string): Promise<void> {
     if (!this.io) return;
 
-    const character = this.getCharacter(characterId);
+    const character = await findCharacterById(characterId);
     const socketId = this.getSocketIdForCharacter(characterId);
 
     if (character && socketId) {
@@ -239,9 +184,6 @@ export class CharacterManager {
     if (!character) {
       throw new Error('Character not found');
     }
-
-    // Remove from active characters if loaded
-    this.activeCharacters.delete(characterId);
 
     // Remove player session if connected
     for (const [socketId, session] of this.playerSessions.entries()) {

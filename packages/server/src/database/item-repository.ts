@@ -149,6 +149,24 @@ export function getItemStats(item: Item): ItemStatsData {
 }
 
 /**
+ * Get default spawn point ID
+ */
+export async function getDefaultSpawnPointId(): Promise<string> {
+  const spawnPoint = await prisma.item.findFirst({
+    where: {
+      itemType: 'spawn_point',
+      roomId: 'town-square',
+    },
+  });
+
+  if (!spawnPoint) {
+    throw new Error('No spawn point found in starting room');
+  }
+
+  return spawnPoint.id;
+}
+
+/**
  * Find all items
  */
 export async function findAllItems(): Promise<Item[]> {
