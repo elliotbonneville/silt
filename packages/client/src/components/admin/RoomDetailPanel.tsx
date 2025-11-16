@@ -144,7 +144,10 @@ export function RoomDetailPanel({
         <div className="text-gray-500 text-xs mb-2">
           Recent Events ({roomEvents.length})<span className="ml-2 text-green-400">● Live</span>
         </div>
-        <div className="overflow-y-auto bg-gray-900 rounded p-3 font-mono" style={{ height: '400px' }}>
+        <div
+          className="overflow-y-auto bg-gray-900 rounded p-3 font-mono"
+          style={{ height: '400px' }}
+        >
           <div className="space-y-2">
             {roomEvents.length === 0 ? (
               <div className="text-gray-500 text-sm">No recent events</div>

@@ -11,7 +11,7 @@ import { saveGameEvent } from '../database/event-repository.js';
 import type { AIAgentManager } from './ai-agent-manager.js';
 import type { CharacterManager } from './character-manager.js';
 import { getRoomsWithinDistance } from './event-distance.js';
-import { formatEventContent, formatEventOmniscient } from './event-formatter.js';
+import { formatEventContent } from './event-formatter.js';
 
 export class EventPropagator {
   constructor(
@@ -125,11 +125,11 @@ export class EventPropagator {
     }
 
     // Broadcast to admin clients for monitoring (ALL events)
-    // Format with omniscient perspective for admin view
+    // Format with omniscient perspective for admin view (no viewerActorId)
     if (this.io) {
       this.io.to('admin').emit('admin:game-event', {
         ...event,
-        content: formatEventOmniscient(event),
+        content: formatEventContent(event),
         recipients: Array.from(affectedActors.keys()),
       });
     }
@@ -141,15 +141,20 @@ export class EventPropagator {
 
     // Deliver game events to players/AI agents
     for (const [actorId, attenuatedEvent] of affectedActors) {
-      // Format content for this specific recipient
-      const formattedEvent: GameEvent = {
-        ...attenuatedEvent,
-        content: attenuatedEvent.content || formatEventContent(attenuatedEvent, actorId),
-      };
-
       // Query DB to determine if this is a player or AI
       const character = await findCharacterById(actorId);
       if (!character) continue;
+
+      // Format content for this specific recipient, including their current room
+      const formattedEvent: GameEvent = {
+        ...attenuatedEvent,
+        content:
+          attenuatedEvent.content ||
+          formatEventContent(attenuatedEvent, actorId, character.currentRoomId),
+      };
+
+      // Filter out empty messages
+      if (!formattedEvent.content) continue;
 
       if (character.accountId === null) {
         // AI agent - queue event

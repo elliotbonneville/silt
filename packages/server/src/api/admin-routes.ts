@@ -11,7 +11,7 @@ import {
   getEventCount,
   queryGameEvents,
 } from '../database/index.js';
-import { formatEventOmniscient } from '../game/event-formatter.js';
+import { formatEventContent } from '../game/event-formatter.js';
 
 export function setupAdminRoutes(app: Express): void {
   /**
@@ -112,22 +112,22 @@ export function setupAdminRoutes(app: Express): void {
         events: events.map((e) => {
           const data = e.dataJson ? JSON.parse(e.dataJson) : undefined;
           const gameEvent: GameEvent = {
-          id: e.id,
+            id: e.id,
             // biome-ignore lint/plugin: Database string needs to be narrowed to GameEventType
             type: e.type as GameEventType,
-          timestamp: e.timestamp.getTime(),
-          originRoomId: e.originRoomId,
+            timestamp: e.timestamp.getTime(),
+            originRoomId: e.originRoomId,
             ...(e.content ? { content: e.content } : {}),
             data,
             // biome-ignore lint/plugin: Database string needs to be narrowed to EventVisibility
             visibility: e.visibility as 'room' | 'global' | 'private',
-          attenuated: e.attenuated,
+            attenuated: e.attenuated,
             relatedEntities: [],
           };
-          // Format with omniscient perspective for admin view
+          // Format with omniscient perspective for admin view (no viewerActorId)
           return {
             ...gameEvent,
-            content: formatEventOmniscient(gameEvent),
+            content: formatEventContent(gameEvent),
           };
         }),
         total,
