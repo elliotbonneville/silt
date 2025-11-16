@@ -33,15 +33,33 @@ export class CommandHandler {
   }
 
   /**
-   * Handle AI agent responses to speech events
+   * Handle AI agent responses to speech/emote events and player entries
    */
   private async handleAIResponses(result: CommandResult, character: Character): Promise<void> {
-    const speechEvent = result.events.find((e) => e.type === 'speech');
-    if (!speechEvent) return;
-
     const roomChars = this.characterManager.getCharactersInRoom(character.currentRoomId);
-    const aiResponses = await this.aiAgentManager.handleSpeechEvent(speechEvent, roomChars);
-    this.eventPropagator.broadcastMany(aiResponses);
+
+    // Handle speech/emote responses
+    const speechEvent = result.events.find((e) => e.type === 'speech');
+    const emoteEvent = result.events.find((e) => e.type === 'emote');
+    const interactionEvent = speechEvent || emoteEvent;
+
+    if (interactionEvent) {
+      const aiResponses = await this.aiAgentManager.handleInteractionEvent(
+        interactionEvent,
+        roomChars,
+      );
+      this.eventPropagator.broadcastMany(aiResponses);
+    }
+
+    // Handle player entered greetings
+    const enteredEvent = result.events.find((e) => e.type === 'player_entered');
+    if (enteredEvent) {
+      const greetings = await this.aiAgentManager.handlePlayerEntered(enteredEvent, roomChars);
+      // Delay greetings slightly so player sees room description first
+      setTimeout(() => {
+        this.eventPropagator.broadcastMany(greetings);
+      }, 1500);
+    }
   }
 
   /**
