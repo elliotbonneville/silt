@@ -1,7 +1,9 @@
 /**
  * Actor registry tracks all actors (players + AI agents) in the game world
- * Maintains location data and socket mappings
+ * Maintains location data and actor instances
  */
+
+import type { GameEvent } from '@silt/shared';
 
 export type ActorType = 'player' | 'ai_agent';
 
@@ -12,13 +14,23 @@ export interface ActorLocation {
   readonly socketId?: string;
 }
 
+/**
+ * Actor interface - both players and AI agents implement this
+ */
+export interface IActor {
+  readonly id: string;
+  readonly actorType: ActorType;
+  handleEvent(event: GameEvent): void;
+}
+
 export class ActorRegistry {
   private actors = new Map<string, ActorLocation>();
+  private actorInstances = new Map<string, IActor>(); // NEW: Actor instances
   private roomOccupants = new Map<string, Set<string>>();
   private socketToActor = new Map<string, string>();
   private actorToSocket = new Map<string, string>();
 
-  addPlayer(playerId: string, roomId: string, socketId: string): void {
+  addPlayer(playerId: string, roomId: string, socketId: string, actorInstance: IActor): void {
     const location: ActorLocation = {
       actorId: playerId,
       actorType: 'player',
@@ -27,12 +39,13 @@ export class ActorRegistry {
     };
 
     this.actors.set(playerId, location);
+    this.actorInstances.set(playerId, actorInstance);
     this.socketToActor.set(socketId, playerId);
     this.actorToSocket.set(playerId, socketId);
     this.addToRoom(playerId, roomId);
   }
 
-  addAIAgent(agentId: string, roomId: string): void {
+  addAIAgent(agentId: string, roomId: string, actorInstance: IActor): void {
     const location: ActorLocation = {
       actorId: agentId,
       actorType: 'ai_agent',
@@ -40,7 +53,15 @@ export class ActorRegistry {
     };
 
     this.actors.set(agentId, location);
+    this.actorInstances.set(agentId, actorInstance);
     this.addToRoom(agentId, roomId);
+  }
+
+  /**
+   * Get actor instance (for polymorphic event delivery)
+   */
+  getActor(actorId: string): IActor | undefined {
+    return this.actorInstances.get(actorId);
   }
 
   private addToRoom(actorId: string, roomId: string): void {

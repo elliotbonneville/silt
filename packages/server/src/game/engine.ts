@@ -7,6 +7,7 @@ import type { Character } from '@prisma/client';
 import type { CharacterListItem, RoomState } from '@silt/shared';
 import { nanoid } from 'nanoid';
 import type { Server } from 'socket.io';
+import { AIAgentActor, PlayerActor } from './actor-interface.js';
 import { ActorRegistry } from './actor-registry.js';
 import { AIAgentManager } from './ai-agent-manager.js';
 import { AIService } from './ai-service.js';
@@ -32,14 +33,15 @@ export class GameEngine {
     this.characterManager = new CharacterManager(this.world);
     this.actorRegistry = new ActorRegistry();
 
-    // Initialize AI service (uses mock mode if no real API key)
-    const apiKey = process.env['OPENAI_API_KEY'] || 'mock';
+    // Initialize AI service
+    const apiKey = process.env['OPENAI_API_KEY'];
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY environment variable is required');
+    }
+
     const aiService = new AIService(apiKey);
     this.aiAgentManager = new AIAgentManager(aiService);
-
-    console.info(
-      apiKey === 'mock' ? '🤖 AI Service: MOCK MODE (no API calls)' : '🤖 AI Service: OpenAI API',
-    );
+    console.info('🤖 AI Service: OpenAI API ready');
   }
 
   /**
@@ -51,14 +53,28 @@ export class GameEngine {
     // Load world from database
     await this.world.initialize();
 
-    // Load NPC characters into memory and register as actors
+    // Load NPC characters into memory
     const npcs = await this.characterManager.loadNPCs();
+
+    // Load AI agents and create actor instances
+    const aiAgents = await this.aiAgentManager.loadAgents();
+    const aiAgentCharacterIds = new Set(aiAgents.map((a) => a.characterId));
+
     for (const npc of npcs) {
-      this.actorRegistry.addAIAgent(npc.id, npc.currentRoomId);
+      // Create AI actor if this NPC has AI agent data
+      if (aiAgentCharacterIds.has(npc.id)) {
+        const aiActor = new AIAgentActor(npc.id, this.aiAgentManager);
+        this.actorRegistry.addAIAgent(npc.id, npc.currentRoomId, aiActor);
+      } else {
+        // Regular NPC without AI (like Training Dummy) - no actor instance needed yet
+        this.actorRegistry.addAIAgent(npc.id, npc.currentRoomId, {
+          id: npc.id,
+          actorType: 'ai_agent',
+          handleEvent: () => {}, // No-op for non-AI NPCs
+        });
+      }
     }
 
-    // Load AI agents
-    const aiAgents = await this.aiAgentManager.loadAgents();
     console.info(`✅ Loaded ${aiAgents.length} AI agents`);
 
     // Set up player lookup for room descriptions
@@ -69,9 +85,9 @@ export class GameEngine {
         .map((char) => ({ name: char.name })),
     );
 
-    // Build room graph and event propagator (with broadcasting capability)
+    // Build room graph and event propagator
     this.roomGraph = new RoomGraph(this.world.getAllRooms());
-    this.eventPropagator = new EventPropagator(this.roomGraph, this.actorRegistry, this.io);
+    this.eventPropagator = new EventPropagator(this.roomGraph, this.actorRegistry);
 
     // Initialize command handler
     this.commandHandler = new CommandHandler(
@@ -107,7 +123,10 @@ export class GameEngine {
     }
 
     const character = await this.characterManager.connectPlayer(socketId, characterId);
-    this.actorRegistry.addPlayer(characterId, character.currentRoomId, socketId);
+
+    // Create player actor instance
+    const playerActor = new PlayerActor(character.id, socketId, this.io);
+    this.actorRegistry.addPlayer(characterId, character.currentRoomId, socketId, playerActor);
 
     // Broadcast player entered event
     this.eventPropagator.broadcast({

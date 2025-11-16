@@ -7,13 +7,15 @@ import type { GameEvent } from '@silt/shared';
 import { nanoid } from 'nanoid';
 import { findAllAIAgents, updateAIAgent } from '../database/index.js';
 import { AIService } from './ai-service.js';
+import { formatEventForAI } from './event-formatter.js';
 
-const CONVERSATION_COOLDOWN_MS = 3000; // 3 seconds between AI responses
+const MIN_RESPONSE_COOLDOWN_MS = 3000; // Minimum 3 seconds between responses
+const EVENT_CONTEXT_WINDOW_MS = 30000; // Consider events from last 30 seconds
 
 export class AIAgentManager {
   private agents = new Map<string, AIAgent>(); // characterId → AIAgent
   private lastResponseTime = new Map<string, number>(); // agentId → timestamp
-  private lastGreetedPlayer = new Map<string, number>(); // agentId-playerId → timestamp
+  private agentEventQueues = new Map<string, GameEvent[]>(); // agentId → event queue
 
   constructor(private readonly aiService: AIService) {}
 
@@ -29,119 +31,89 @@ export class AIAgentManager {
   }
 
   /**
-   * Check if an agent should respond to a speech event
+   * Queue an event for an AI agent (called by EventPropagator)
+   * AI agents receive ALL events just like players do
    */
-  private shouldRespond(agentId: string): boolean {
+  queueEventForAgent(agentId: string, event: GameEvent): void {
+    const queue = this.agentEventQueues.get(agentId) || [];
+    queue.push(event);
+
+    // Keep only last 30 seconds of events
+    const cutoff = Date.now() - EVENT_CONTEXT_WINDOW_MS;
+    this.agentEventQueues.set(
+      agentId,
+      queue.filter((e: GameEvent) => e.timestamp > cutoff),
+    );
+  }
+
+  /**
+   * Get queued events for an agent
+   */
+  private getQueuedEvents(agentId: string): GameEvent[] {
+    const queue = this.agentEventQueues.get(agentId) || [];
+    const cutoff = Date.now() - EVENT_CONTEXT_WINDOW_MS;
+    return queue.filter((e: GameEvent) => e.timestamp > cutoff);
+  }
+
+  /**
+   * Check if agent can respond (cooldown check)
+   */
+  private canRespond(agentId: string): boolean {
     const lastResponse = this.lastResponseTime.get(agentId) || 0;
     const now = Date.now();
-    return now - lastResponse >= CONVERSATION_COOLDOWN_MS;
+    return now - lastResponse >= MIN_RESPONSE_COOLDOWN_MS;
   }
 
   /**
-   * Check if AI agent should react to an interaction
+   * Handle ANY event - AI sees everything and LLM decides if they should respond
    */
-  private shouldReactTo(
-    content: string,
-    agentName: string,
-    totalInRoom: number,
-    eventType: string,
-  ): boolean {
-    const lowerContent = content.toLowerCase();
-    const lowerName = agentName.toLowerCase();
+  async handleEvent(event: GameEvent, charactersInRoom: Character[]): Promise<GameEvent[]> {
+    // Note: Events are now queued per-agent via queueEventForAgent() by EventPropagator
+    // This method is called on specific events to check if AI should respond
 
-    // Explicit targeting: content mentions agent's name
-    if (lowerContent.includes(lowerName)) return true;
-
-    // Implicit targeting: only 2 in room (player + AI)
-    if (totalInRoom === 2) return true;
-
-    // For speech: check for directed greetings/questions
-    if (eventType === 'speech') {
-      const greetings = ['hello', 'hi', 'hey', 'greetings', 'howdy'];
-      const questions = ['what', 'where', 'when', 'who', 'how', 'why', '?'];
-
-      const isGreeting = greetings.some((g) => lowerContent.startsWith(g));
-      const isQuestion = questions.some((q) => lowerContent.includes(q));
-
-      // Respond to greetings/questions when only the AI and player
-      if ((isGreeting || isQuestion) && totalInRoom === 2) return true;
-    }
-
-    // For emotes: only respond if explicitly named or alone
-    // Don't respond to every emote (would be spammy)
-    if (eventType === 'emote') {
-      // Already checked name and room count above
-      return false;
-    }
-
-    // Not addressed
-    return false;
-  }
-
-  /**
-   * Handle interaction events (speech or emote) - AI agents in the room may respond
-   */
-  async handleInteractionEvent(
-    event: GameEvent,
-    charactersInRoom: Character[],
-  ): Promise<GameEvent[]> {
-    if (event.type !== 'speech' && event.type !== 'emote') return [];
-
-    const actorId = event.data?.['actorId'];
-    if (typeof actorId !== 'string') return [];
-
-    const actor = charactersInRoom.find((c) => c.id === actorId);
-    if (!actor) return [];
+    // Skip if no players (optimization - AI doesn't talk to itself)
+    const hasPlayers = charactersInRoom.some((c) => c.accountId !== null);
+    if (!hasPlayers) return [];
 
     const responseEvents: GameEvent[] = [];
 
     // Check each AI agent in the room
     for (const character of charactersInRoom) {
       const agent = this.agents.get(character.id);
-      if (!agent || character.id === actorId) continue; // Skip non-AI and self
-      if (!this.shouldRespond(agent.id)) continue;
+      if (!agent) continue;
+      if (!this.canRespond(agent.id)) continue; // Cooldown check
 
-      // Get the interaction content (message for speech, action for emote)
-      const interactionContent =
-        event.type === 'speech'
-          ? event.data?.['message']
-          : event.type === 'emote'
-            ? event.data?.['action']
-            : undefined;
+      // Get queued events for this specific agent (they've been receiving ALL room events)
+      const queuedEvents = this.getQueuedEvents(agent.characterId);
+      if (queuedEvents.length === 0) continue;
 
-      if (typeof interactionContent !== 'string') continue;
+      const formattedEvents = queuedEvents.map(formatEventForAI);
 
-      // Check if AI should react to this interaction
-      if (
-        !this.shouldReactTo(interactionContent, character.name, charactersInRoom.length, event.type)
-      ) {
-        continue;
-      }
+      // Calculate time since last response
+      const lastResponse = this.lastResponseTime.get(agent.id) || 0;
+      const timeSinceLastResponse = Math.floor((Date.now() - lastResponse) / 1000);
 
-      const memory = {
-        relationships: AIService.parseRelationships(agent.relationshipsJson),
-        conversationHistory: AIService.parseConversation(agent.conversationJson),
-      };
-
-      const roomContext = `In the ${event.originRoomId}`;
-      const interactionType = event.type === 'speech' ? 'said' : 'did';
-      const contextMessage =
-        event.type === 'speech'
-          ? `${actor.name} ${interactionType}: "${interactionContent}"`
-          : `${actor.name} ${interactionContent}`;
+      // Load memory
+      const relationships = AIService.parseRelationships(agent.relationshipsJson);
+      const roomContext = `${charactersInRoom.length} people present`;
 
       try {
-        const aiResponse = await this.aiService.generateResponse(
+        // LLM decides if should respond based on ALL recent events
+        const decision = await this.aiService.decideResponse(
           agent.systemPrompt,
-          actor.name,
-          contextMessage,
-          memory,
+          character.name,
+          formattedEvents,
+          relationships,
+          timeSinceLastResponse,
           roomContext,
         );
 
-        // Update memory
-        if (aiResponse.updatedRelationship) {
-          const currentRel = memory.relationships.get(actor.name) || {
+        if (!decision.shouldRespond || !decision.response) continue;
+
+        // Update relationships
+        const speakerName = event.data?.['actorName'];
+        if (typeof speakerName === 'string') {
+          const currentRel = relationships.get(speakerName) || {
             sentiment: 5,
             trust: 3,
             familiarity: 0,
@@ -149,126 +121,44 @@ export class AIAgentManager {
             role: 'newcomer',
           };
 
-          memory.relationships.set(actor.name, {
+          relationships.set(speakerName, {
             ...currentRel,
-            ...aiResponse.updatedRelationship,
+            familiarity: currentRel.familiarity + 1,
+            lastSeen: new Date().toISOString(),
           });
-        }
-
-        // Add to conversation history
-        memory.conversationHistory.push({
-          speaker: actor.name,
-          message: contextMessage,
-          timestamp: Date.now(),
-        });
-
-        memory.conversationHistory.push({
-          speaker: character.name,
-          message: aiResponse.message,
-          timestamp: Date.now(),
-        });
-
-        // Keep only last 20 messages
-        if (memory.conversationHistory.length > 20) {
-          memory.conversationHistory = memory.conversationHistory.slice(-20);
         }
 
         // Save updated memory
         await updateAIAgent(agent.id, {
-          relationshipsJson: AIService.serializeRelationships(memory.relationships),
-          conversationJson: AIService.serializeConversation(memory.conversationHistory),
+          relationshipsJson: AIService.serializeRelationships(relationships),
           lastActionAt: new Date(),
         });
 
         // Update cooldown
         this.lastResponseTime.set(agent.id, Date.now());
 
-        // Create response event
+        // Create AI response event
         responseEvents.push({
           id: `event-${nanoid(10)}`,
           type: 'speech',
           timestamp: Date.now(),
           originRoomId: event.originRoomId,
-          content: `${character.name} says: "${aiResponse.message}"`,
+          content: `${character.name} says: "${decision.response}"`,
           relatedEntities: [],
           visibility: 'room',
           data: {
             actorId: character.id,
             actorName: character.name,
-            targetId: actor.id,
-            targetName: actor.name,
-            message: aiResponse.message,
+            message: decision.response,
             isAI: true,
+            reasoning: decision.reasoning,
           },
         });
       } catch (error) {
-        console.error(`AI agent ${character.name} failed to respond:`, error);
+        console.error(`AI agent ${character.name} failed to process event:`, error);
       }
     }
 
     return responseEvents;
-  }
-
-  /**
-   * Handle player entered event - AI may greet them
-   */
-  async handlePlayerEntered(event: GameEvent, charactersInRoom: Character[]): Promise<GameEvent[]> {
-    if (event.type !== 'player_entered') return [];
-
-    const playerId = event.data?.['actorId'];
-    const playerName = event.data?.['actorName'];
-    if (typeof playerId !== 'string' || typeof playerName !== 'string') return [];
-
-    const greetingEvents: GameEvent[] = [];
-    const now = Date.now();
-
-    // Check each AI agent in the room
-    for (const character of charactersInRoom) {
-      const agent = this.agents.get(character.id);
-      if (!agent) continue;
-
-      // Check if we recently greeted this player (don't spam greetings)
-      const greetKey = `${agent.id}-${playerId}`;
-      const lastGreeted = this.lastGreetedPlayer.get(greetKey) || 0;
-      if (now - lastGreeted < 300000) continue; // 5 minutes between greetings
-
-      // Get relationship to personalize greeting
-      const memory = {
-        relationships: AIService.parseRelationships(agent.relationshipsJson),
-        conversationHistory: AIService.parseConversation(agent.conversationJson),
-      };
-
-      const relationship = memory.relationships.get(playerName);
-      const isReturning = relationship && relationship.familiarity > 0;
-
-      const greeting = isReturning
-        ? `Welcome back, ${playerName}! Good to see you again.`
-        : `Welcome to the square, ${playerName}!`;
-
-      // Update last greeted time
-      this.lastGreetedPlayer.set(greetKey, now);
-
-      // Create greeting event
-      greetingEvents.push({
-        id: `event-${nanoid(10)}`,
-        type: 'speech',
-        timestamp: now,
-        originRoomId: event.originRoomId,
-        content: `${character.name} says: "${greeting}"`,
-        relatedEntities: [],
-        visibility: 'room',
-        data: {
-          actorId: character.id,
-          actorName: character.name,
-          targetId: playerId,
-          targetName: playerName,
-          message: greeting,
-          isAI: true,
-          isGreeting: true,
-        },
-      });
-    }
-
-    return greetingEvents;
   }
 }

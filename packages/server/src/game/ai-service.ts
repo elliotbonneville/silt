@@ -3,6 +3,7 @@
  */
 
 import OpenAI from 'openai';
+import { z } from 'zod';
 
 interface RelationshipData {
   sentiment: number; // -10 to +10
@@ -28,18 +29,23 @@ export interface AIResponse {
   updatedRelationship?: Partial<RelationshipData>;
 }
 
+/**
+ * Zod schema for AI decision responses
+ */
+const AIDecisionSchema = z.object({
+  shouldRespond: z.boolean(),
+  response: z.string().nullable(),
+  reasoning: z.string().optional(),
+});
+
+export type AIDecision = z.infer<typeof AIDecisionSchema>;
+
 export class AIService {
-  private client: OpenAI | null = null;
+  private client: OpenAI;
   private readonly maxTokens = 150;
-  private readonly useMock: boolean;
 
   constructor(apiKey: string) {
-    // Use mock mode if API key is the placeholder or 'mock'
-    this.useMock = apiKey === 'mock' || apiKey === 'sk-your-api-key-here';
-
-    if (!this.useMock) {
-      this.client = new OpenAI({ apiKey });
-    }
+    this.client = new OpenAI({ apiKey });
   }
 
   /**
@@ -53,15 +59,6 @@ export class AIService {
     roomContext: string,
   ): Promise<AIResponse> {
     const relationship = memory.relationships.get(playerName) || this.createNewRelationship();
-
-    // Mock mode for testing without OpenAI
-    if (this.useMock) {
-      return this.generateMockResponse(playerName, playerMessage, relationship);
-    }
-
-    if (!this.client) {
-      throw new Error('OpenAI client not initialized');
-    }
 
     const recentHistory = memory.conversationHistory.slice(-10);
 
@@ -115,38 +112,6 @@ Room context: ${roomContext}`;
   }
 
   /**
-   * Generate a mock response for testing without OpenAI
-   */
-  private generateMockResponse(
-    playerName: string,
-    playerMessage: string,
-    relationship: RelationshipData,
-  ): AIResponse {
-    const greetings = ['hello', 'hi', 'hey', 'greetings'];
-    const isGreeting = greetings.some((g) => playerMessage.toLowerCase().includes(g));
-
-    let response: string;
-
-    if (relationship.familiarity === 0) {
-      response = `Welcome to the town square, ${playerName}! I'm here to help.`;
-    } else if (isGreeting) {
-      response = `Good to see you again, ${playerName}! How can I assist you today?`;
-    } else if (playerMessage.toLowerCase().includes('help')) {
-      response = 'Try exploring the exits, picking up items, or examining things around you!';
-    } else {
-      response = 'Interesting! Tell me more, or ask if you need any help.';
-    }
-
-    return {
-      message: response,
-      updatedRelationship: {
-        familiarity: relationship.familiarity + 1,
-        lastSeen: new Date().toISOString(),
-      },
-    };
-  }
-
-  /**
    * Create a new relationship for a first-time interaction
    */
   private createNewRelationship(): RelationshipData {
@@ -195,5 +160,76 @@ Room context: ${roomContext}`;
    */
   static serializeConversation(messages: ConversationMessage[]): string {
     return JSON.stringify(messages);
+  }
+
+  /**
+   * Decide if AI should respond to recent events
+   */
+  async decideResponse(
+    agentPersonality: string,
+    agentName: string,
+    recentEvents: string[],
+    relationships: Map<string, RelationshipData>,
+    timeSinceLastResponse: number,
+    roomContext: string,
+  ): Promise<AIDecision> {
+    // Build relationships context
+    const relContext = Array.from(relationships.entries())
+      .map(([name, rel]) => `- ${name}: familiarity ${rel.familiarity}, trust ${rel.trust}/10`)
+      .join('\n');
+
+    const prompt = `You are ${agentName}. ${agentPersonality}
+
+Recent events you witnessed:
+${recentEvents.map((e, i) => `${i + 1}. ${e}`).join('\n')}
+
+Relationships with people present:
+${relContext || 'No prior relationships'}
+
+Last spoke: ${timeSinceLastResponse} seconds ago
+Room: ${roomContext}
+
+Rules for speaking:
+- Speak when directly addressed by name
+- Greet newcomers
+- React to dramatic events (deaths, victories)
+- Don't interrupt private conversations
+- Wait at least 3 seconds between comments
+- Keep responses to 1-2 sentences max
+
+Should you say something? Respond with JSON only:
+{
+  "shouldRespond": true or false,
+  "response": "your message" or null,
+  "reasoning": "why you decided this"
+}`;
+
+    const response = await this.client.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      max_tokens: 200,
+      temperature: 0.7,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      return { shouldRespond: false, response: null };
+    }
+
+    try {
+      const parsed: unknown = JSON.parse(content);
+      const result = AIDecisionSchema.safeParse(parsed);
+
+      if (!result.success) {
+        console.error('Failed to parse AI decision:', result.error);
+        return { shouldRespond: false, response: null };
+      }
+
+      return result.data;
+    } catch (error) {
+      console.error('Failed to parse AI response JSON:', error);
+      return { shouldRespond: false, response: null };
+    }
   }
 }
