@@ -5,6 +5,14 @@
 import type { Character } from '@prisma/client';
 import type { GameEvent } from '@silt/shared';
 import { nanoid } from 'nanoid';
+import {
+  executeDropCommand,
+  executeEquipCommand,
+  executeExamineCommand,
+  executeInventoryCommand,
+  executeTakeCommand,
+  executeUnequipCommand,
+} from './inventory-commands.js';
 import type { World } from './world.js';
 
 export interface CommandContext {
@@ -123,6 +131,11 @@ export function executeSayCommand(ctx: CommandContext, message: string): Command
         content: `${ctx.character.name} says: "${message}"`,
         relatedEntities: [],
         visibility: 'room',
+        data: {
+          actorId: ctx.character.id,
+          actorName: ctx.character.name,
+          message,
+        },
       },
     ],
   };
@@ -147,6 +160,11 @@ export function executeShoutCommand(ctx: CommandContext, message: string): Comma
         content: `${ctx.character.name} shouts: "${message}"`,
         relatedEntities: [],
         visibility: 'room',
+        data: {
+          actorId: ctx.character.id,
+          actorName: ctx.character.name,
+          message,
+        },
       },
     ],
   };
@@ -215,6 +233,33 @@ export async function parseAndExecuteCommand(
 
     case 'shout':
       return executeShoutCommand(ctx, args.join(' '));
+
+    case 'inventory':
+    case 'inv':
+    case 'i':
+      return await executeInventoryCommand(ctx);
+
+    case 'take':
+    case 'get':
+    case 'pickup':
+      return await executeTakeCommand(ctx, args.join(' '));
+
+    case 'drop':
+      return await executeDropCommand(ctx, args.join(' '));
+
+    case 'examine':
+    case 'exam':
+    case 'ex':
+      return await executeExamineCommand(ctx, args.join(' '));
+
+    case 'equip':
+    case 'wield':
+    case 'wear':
+      return await executeEquipCommand(ctx, args.join(' '));
+
+    case 'unequip':
+    case 'remove':
+      return await executeUnequipCommand(ctx, args.join(' '));
 
     default:
       return { success: false, events: [], error: `Unknown command: ${command}` };

@@ -79,7 +79,7 @@ export default function GameRoute(): JSX.Element {
       {error && <div className="bg-red-900 px-4 py-2 text-center text-sm text-white">{error}</div>}
 
       {/* Game terminal */}
-      <GameTerminal events={events} />
+      <GameTerminal events={events} currentCharacterId={character.id} />
 
       {/* Command input */}
       <CommandInput onCommand={handleCommand} disabled={!character} />

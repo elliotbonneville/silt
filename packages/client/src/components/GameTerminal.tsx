@@ -7,9 +7,10 @@ import { useEffect, useRef } from 'react';
 
 interface GameTerminalProps {
   events: readonly GameEvent[];
+  currentCharacterId?: string;
 }
 
-export function GameTerminal({ events }: GameTerminalProps): JSX.Element {
+export function GameTerminal({ events, currentCharacterId }: GameTerminalProps): JSX.Element {
   const terminalRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom when events change
@@ -29,18 +30,69 @@ export function GameTerminal({ events }: GameTerminalProps): JSX.Element {
 
       {events.map((event) => (
         <div key={event.id} className="mb-2">
-          <EventLine event={event} />
+          <EventLine event={event} currentCharacterId={currentCharacterId} />
         </div>
       ))}
     </div>
   );
 }
 
-interface EventLineProps {
-  event: GameEvent;
+/**
+ * Format event content to use first-person ("You") or third-person based on actor
+ */
+function formatEventContent(event: GameEvent, isCurrentPlayer: boolean): string {
+  const content = event.content || '';
+
+  // If no data or not current player, use default content
+  if (!isCurrentPlayer || !event.data) {
+    return content;
+  }
+
+  const data = event.data;
+  const actorName = data['actorName'];
+  if (typeof actorName !== 'string') {
+    return content;
+  }
+
+  // Convert third-person to second-person for different event types
+  switch (event.type) {
+    case 'item_pickup': {
+      const itemName = data['itemName'];
+      return typeof itemName === 'string' ? `You take ${itemName}.` : content;
+    }
+
+    case 'item_drop': {
+      const itemName = data['itemName'];
+      return typeof itemName === 'string' ? `You drop ${itemName}.` : content;
+    }
+
+    case 'speech': {
+      const message = data['message'];
+      return typeof message === 'string' ? `You say: "${message}"` : content;
+    }
+
+    case 'shout': {
+      const message = data['message'];
+      return typeof message === 'string' ? `You shout: "${message}"` : content;
+    }
+
+    case 'movement': {
+      const direction = data['direction'];
+      return typeof direction === 'string' ? `You move ${direction}.` : content;
+    }
+
+    default:
+      // For unknown types, do basic replacement
+      return content.replace(new RegExp(`^${actorName}`, 'i'), 'You');
+  }
 }
 
-function EventLine({ event }: EventLineProps): JSX.Element {
+interface EventLineProps {
+  readonly event: GameEvent;
+  readonly currentCharacterId: string | undefined;
+}
+
+function EventLine({ event, currentCharacterId }: EventLineProps): JSX.Element {
   const getEventColor = (): string => {
     switch (event.type) {
       case 'room_description':
@@ -59,13 +111,23 @@ function EventLine({ event }: EventLineProps): JSX.Element {
         return 'text-red-400';
       case 'death':
         return 'text-red-600 font-bold';
+      case 'item_pickup':
+      case 'item_drop':
+        return 'text-blue-400';
       default:
         return 'text-green-400';
     }
   };
 
+  // Check if this event is about the current player
+  const actorId = event.data?.['actorId'];
+  const isCurrentPlayer = typeof actorId === 'string' && actorId === currentCharacterId;
+
+  // Format content based on perspective
+  const formattedContent = formatEventContent(event, isCurrentPlayer);
+
   // Split multi-line content into separate lines
-  const lines = event.content?.split('\n') || [];
+  const lines = formattedContent.split('\n') || [];
 
   // For room descriptions, make the first line (room name) bold
   if (event.type === 'room_description' && lines.length > 0) {
