@@ -78,12 +78,75 @@ async function main(): Promise<void> {
         'A damp, dark cave. Water drips from stalactites above. You hear strange sounds echoing in the darkness.',
       exitsJson: JSON.stringify({
         south: 'forest-path',
+        northeast: 'mountain-peak',
+        down: 'hidden-grotto',
+      }),
+    },
+  });
+
+  // One-way cave (can only exit, cannot enter from outside)
+  await prisma.room.create({
+    data: {
+      id: 'hidden-grotto',
+      name: 'Hidden Grotto',
+      description:
+        'A secret underground chamber. The opening you fell through is far above - too high to climb back.',
+      exitsJson: JSON.stringify({
+        east: 'underground-river',
+      }),
+    },
+  });
+
+  await prisma.room.create({
+    data: {
+      id: 'underground-river',
+      name: 'Underground River',
+      description: 'A rushing underground river. The current is strong and dangerous.',
+      exitsJson: JSON.stringify({
+        west: 'hidden-grotto',
+        southwest: 'cavern-pool',
+      }),
+    },
+  });
+
+  await prisma.room.create({
+    data: {
+      id: 'cavern-pool',
+      name: 'Cavern Pool',
+      description:
+        'A large underground pool with crystal-clear water. Light filters in from above.',
+      exitsJson: JSON.stringify({
+        northeast: 'underground-river',
+        up: 'tavern',
+      }),
+    },
+  });
+
+  await prisma.room.create({
+    data: {
+      id: 'mountain-peak',
+      name: 'Mountain Peak',
+      description: 'The peak of a tall mountain. You can see the entire world laid out below you.',
+      exitsJson: JSON.stringify({
+        southwest: 'dark-cave',
+        southeast: 'rocky-ledge',
+      }),
+    },
+  });
+
+  await prisma.room.create({
+    data: {
+      id: 'rocky-ledge',
+      name: 'Rocky Ledge',
+      description: 'A narrow ledge on the mountainside. One wrong step could be fatal.',
+      exitsJson: JSON.stringify({
+        northwest: 'mountain-peak',
       }),
     },
   });
 
   // biome-ignore lint/suspicious/noConsole: Seed script needs console output
-  console.log('✓ Created 5 rooms');
+  console.log('✓ Created 10 rooms (including one-way cave and diagonal connections)');
 
   // Create spawn points (special items for character respawning)
   // Players spawn here when creating new characters

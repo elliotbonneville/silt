@@ -116,9 +116,10 @@ model Item {
 }
 
 // GameEvent model - comprehensive event log for debugging and replay
+// Includes both game events (speech, combat) and AI events (decisions, actions)
 model GameEvent {
   id            String   @id @default(cuid())
-  type          String   // Event type: movement, combat, speech, etc.
+  type          String   // Event type: movement, combat, speech, ai:decision, ai:action, etc.
   timestamp     DateTime @default(now())
   originRoomId  String
   

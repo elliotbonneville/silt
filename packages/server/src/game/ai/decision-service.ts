@@ -41,7 +41,7 @@ Available actions: ${tools.map((t) => t.function.name).join(', ')}
 
 Decide what to do. You can:
 - Attack threats
-- Pick up useful items
+- Pick up useful items  
 - Move around (stay near your home)
 - Say something
 - Do nothing (wait and observe)
@@ -57,7 +57,9 @@ Consider your personality and the situation. Don't spam actions.`;
     temperature: 0.8,
   });
 
-  const toolCall = response.choices[0]?.message?.tool_calls?.[0];
+  const message = response.choices[0]?.message;
+  const toolCall = message?.tool_calls?.[0];
+
   if (!toolCall || toolCall.type !== 'function') {
     return null; // AI chose to do nothing
   }
@@ -74,10 +76,19 @@ Consider your personality and the situation. Don't spam actions.`;
       return null;
     }
 
+    // Format arguments for display
+    const argSummary = Object.entries(result.data)
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join(', ');
+
+    const reasoning = argSummary
+      ? `${toolCall.function.name}(${argSummary})`
+      : toolCall.function.name;
+
     return {
       action: toolCall.function.name,
       arguments: result.data,
-      reasoning: 'AI function call',
+      reasoning,
     };
   } catch {
     return null;
