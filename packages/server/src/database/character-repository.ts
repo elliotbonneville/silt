@@ -145,3 +145,10 @@ export async function deleteCharacter(id: string): Promise<void> {
     where: { id },
   });
 }
+
+/**
+ * Find all characters
+ */
+export async function findAllCharacters(): Promise<Character[]> {
+  return prisma.character.findMany();
+}

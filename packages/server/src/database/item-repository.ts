@@ -147,3 +147,10 @@ export async function deleteItem(itemId: string): Promise<void> {
 export function getItemStats(item: Item): ItemStatsData {
   return parseItemStats(item.statsJson);
 }
+
+/**
+ * Find all items
+ */
+export async function findAllItems(): Promise<Item[]> {
+  return prisma.item.findMany();
+}
