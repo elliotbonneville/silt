@@ -12,6 +12,7 @@ async function main(): Promise<void> {
   console.log('🌱 Seeding database...');
 
   // Clear existing data
+  await prisma.aIAgent.deleteMany();
   await prisma.item.deleteMany();
   await prisma.character.deleteMany();
   await prisma.room.deleteMany();
@@ -240,8 +241,24 @@ Keep responses to 1-2 sentences. Stay in character as a medieval town crier.`,
     },
   });
 
+  await prisma.aIAgent.create({
+    data: {
+      characterId: goblin.id,
+      systemPrompt: `You are a Goblin, a hostile creature guarding the forest path.
+You are aggressive, territorial, and attack intruders on sight.
+You patrol between the forest path and your cave, protecting your treasure.
+
+Personality: Hostile, aggressive, territorial. You don't talk much - you fight.
+Behavior: Attack any adventurers who enter your territory. Pick up weapons you find.
+
+You can move, attack, and occasionally grunt threats. Keep responses short and aggressive.`,
+      homeRoomId: forestPath.id,
+      maxRoomsFromHome: 1, // Can move between forest and cave
+    },
+  });
+
   // biome-ignore lint/suspicious/noConsole: Seed script output
-  console.log('✓ Created 1 AI agent');
+  console.log('✓ Created 2 AI agents');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('');
   // biome-ignore lint/suspicious/noConsole: Seed script output
@@ -285,13 +302,13 @@ Keep responses to 1-2 sentences. Stay in character as a medieval town crier.`,
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('NPCs:');
   // biome-ignore lint/suspicious/noConsole: Seed script output
-  console.log('  - Town Crier (Town Square) - AI-POWERED');
+  console.log('  - Town Crier (Town Square) - AI-POWERED (friendly)');
   // biome-ignore lint/suspicious/noConsole: Seed script output
-  console.log('  - Goblin (Forest Path) - 30 HP, 8 ATK, 3 DEF');
+  console.log('  - Goblin (Forest Path) - AI-POWERED (hostile) - 30 HP, 8 ATK, 3 DEF');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('    Carrying: Rusty Dagger, Gold Coins');
   // biome-ignore lint/suspicious/noConsole: Seed script output
-  console.log('  - Training Dummy (Training Grounds) - 50 HP, 0 ATK');
+  console.log('  - Training Dummy (Training Grounds) - 50 HP, 0 ATK (practice target)');
 }
 
 main()

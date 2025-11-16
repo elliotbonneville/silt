@@ -3,17 +3,18 @@
  * Manages world state, actors, and event propagation
  */
 
-import type { Character } from '@prisma/client';
+import type { AIAgent, Character } from '@prisma/client';
 import type { CharacterListItem, RoomState } from '@silt/shared';
-import { nanoid } from 'nanoid';
 import type { Server } from 'socket.io';
-import { AIAgentActor, PlayerActor } from './actor-interface.js';
+import { AIAgentActor } from './actor-interface.js';
 import { ActorRegistry } from './actor-registry.js';
+import type { AIAction } from './ai/index.js';
 import { AIService } from './ai/index.js';
 import { AIAgentManager } from './ai-agent-manager.js';
 import { CharacterManager } from './character-manager.js';
 import { CommandHandler } from './command-handler.js';
 import { type CommandContext, parseAndExecuteCommand } from './commands.js';
+import { ConnectionHandler } from './connection-handler.js';
 import { EventPropagator } from './event-propagator.js';
 import { RoomGraph } from './room-graph.js';
 import { World } from './world.js';
@@ -26,6 +27,7 @@ export class GameEngine {
   private roomGraph!: RoomGraph;
   private eventPropagator!: EventPropagator;
   private commandHandler!: CommandHandler;
+  private connectionHandler!: ConnectionHandler;
   private initialized = false;
 
   constructor(private readonly io: Server) {
@@ -40,7 +42,14 @@ export class GameEngine {
     }
 
     const aiService = new AIService(apiKey);
-    this.aiAgentManager = new AIAgentManager(aiService);
+    this.aiAgentManager = new AIAgentManager(
+      aiService,
+      (id: string) => this.characterManager.getCharacter(id),
+      (roomId: string) => this.characterManager.getCharactersInRoom(roomId),
+      async (agent, character, action) => {
+        await this.executeAIAction(agent, character, action);
+      },
+    );
     console.info('🤖 AI Service: OpenAI API ready');
   }
 
@@ -89,12 +98,23 @@ export class GameEngine {
     this.roomGraph = new RoomGraph(this.world.getAllRooms());
     this.eventPropagator = new EventPropagator(this.roomGraph, this.actorRegistry);
 
-    // Initialize command handler
+    // Initialize handlers
     this.commandHandler = new CommandHandler(
       this.characterManager,
       this.aiAgentManager,
       this.eventPropagator,
     );
+
+    this.connectionHandler = new ConnectionHandler(
+      this.io,
+      this.characterManager,
+      this.actorRegistry,
+      this.eventPropagator,
+      this.world,
+    );
+
+    // Start AI proactive behavior loop
+    this.aiAgentManager.startProactiveLoop();
 
     this.initialized = true;
   }
@@ -118,63 +138,15 @@ export class GameEngine {
    * Connect a player to a character
    */
   async connectPlayerToCharacter(socketId: string, characterId: string): Promise<Character> {
-    if (!this.initialized) {
-      throw new Error('Game engine not initialized');
-    }
-
-    const character = await this.characterManager.connectPlayer(socketId, characterId);
-
-    // Create player actor instance
-    const playerActor = new PlayerActor(character.id, socketId, this.io);
-    this.actorRegistry.addPlayer(characterId, character.currentRoomId, socketId, playerActor);
-
-    // Broadcast player entered event
-    this.eventPropagator.broadcast({
-      id: `event-${nanoid()}`,
-      type: 'player_entered',
-      timestamp: Date.now(),
-      originRoomId: character.currentRoomId,
-      content: `${character.name} has entered the room.`,
-      relatedEntities: [],
-      visibility: 'room',
-    });
-
-    // Send initial room description (private event, send directly)
-    const roomDescription = await this.world.getRoomDescription(
-      character.currentRoomId,
-      character.name,
-    );
-    this.io.to(socketId).emit('game:event', {
-      id: `event-${nanoid()}`,
-      type: 'room_description',
-      timestamp: Date.now(),
-      originRoomId: character.currentRoomId,
-      content: roomDescription,
-      relatedEntities: [],
-      visibility: 'private',
-    });
-
-    return character;
+    if (!this.initialized) throw new Error('Game engine not initialized');
+    return this.connectionHandler.connectPlayer(socketId, characterId);
   }
 
   /**
    * Disconnect a player
    */
   async disconnectPlayer(socketId: string): Promise<void> {
-    const character = await this.characterManager.disconnectPlayer(socketId);
-    if (!character) return;
-
-    this.eventPropagator.broadcast({
-      id: `event-${nanoid()}`,
-      type: 'player_left',
-      timestamp: Date.now(),
-      originRoomId: character.currentRoomId,
-      content: `${character.name} has left the room.`,
-      relatedEntities: [],
-      visibility: 'room',
-    });
-
-    this.actorRegistry.removeBySocketId(socketId);
+    await this.connectionHandler.disconnectPlayer(socketId);
   }
 
   /**
@@ -256,5 +228,38 @@ export class GameEngine {
       occupants,
       items: [],
     };
+  }
+
+  /**
+   * Execute an AI-decided action
+   */
+  private async executeAIAction(
+    _agent: AIAgent,
+    character: Character,
+    action: AIAction,
+  ): Promise<void> {
+    const commandString = this.aiAgentManager.buildCommandFromAction(action);
+
+    const context: CommandContext = {
+      character,
+      world: this.world,
+      getCharacterInRoom: (roomId: string, name: string) =>
+        this.characterManager.getCharacterInRoom(roomId, name),
+    };
+
+    const result = await parseAndExecuteCommand(commandString, context);
+
+    // Handle movement
+    const moveEvent = result.events.find((e) => e.type === 'movement');
+    if (moveEvent?.data && this.isMovementData(moveEvent.data)) {
+      character.currentRoomId = moveEvent.data.toRoomId;
+      this.actorRegistry.moveActor(
+        character.id,
+        moveEvent.data.fromRoomId,
+        moveEvent.data.toRoomId,
+      );
+    }
+
+    await this.commandHandler.processResults(result, character);
   }
 }

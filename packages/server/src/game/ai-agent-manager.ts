@@ -17,8 +17,18 @@ export class AIAgentManager {
   private agents = new Map<string, AIAgent>(); // characterId → AIAgent
   private lastResponseTime = new Map<string, number>(); // agentId → timestamp
   private agentEventQueues = new Map<string, GameEvent[]>(); // agentId → event queue
+  private proactiveLoopTimer: NodeJS.Timeout | undefined = undefined;
 
-  constructor(private readonly aiService: AIService) {}
+  constructor(
+    private readonly aiService: AIService,
+    private readonly getCharacter: (id: string) => Character | undefined,
+    private readonly getCharactersInRoom: (roomId: string) => Character[],
+    private readonly executeAIAction: (
+      agent: AIAgent,
+      character: Character,
+      action: AIAction,
+    ) => Promise<void>,
+  ) {}
 
   /**
    * Load all AI agents from database
@@ -29,6 +39,80 @@ export class AIAgentManager {
       this.agents.set(agent.characterId, agent);
     }
     return agents;
+  }
+
+  /**
+   * Start proactive behavior loop
+   */
+  startProactiveLoop(): void {
+    if (this.proactiveLoopTimer) return; // Already running
+
+    // Check all agents every 10 seconds
+    this.proactiveLoopTimer = setInterval(() => {
+      this.processProactiveActions().catch((error) => {
+        console.error('Error in proactive AI loop:', error);
+      });
+    }, 10000);
+
+    console.info('🤖 AI proactive behavior loop started');
+  }
+
+  /**
+   * Stop proactive behavior loop
+   */
+  stopProactiveLoop(): void {
+    if (this.proactiveLoopTimer !== undefined) {
+      clearInterval(this.proactiveLoopTimer);
+    }
+    this.proactiveLoopTimer = undefined;
+  }
+
+  /**
+   * Process proactive actions for all agents
+   */
+  private async processProactiveActions(): Promise<void> {
+    for (const [characterId, agent] of this.agents.entries()) {
+      const character = this.getCharacter(characterId);
+      if (!character) continue;
+
+      // Filter 1: Only agents in rooms with players
+      const roomChars = this.getCharactersInRoom(character.currentRoomId);
+      const hasPlayers = roomChars.some((c) => c.accountId !== null);
+      if (!hasPlayers) continue;
+
+      // Filter 2: Cooldown check
+      if (!this.canRespond(agent.id)) continue;
+
+      // Filter 3: Must have queued events to react to
+      const queuedEvents = this.getQueuedEvents(characterId);
+      if (queuedEvents.length === 0) continue;
+
+      // Get context
+      const formattedEvents = queuedEvents.map(formatEventForAI);
+      const lastAction = this.lastResponseTime.get(agent.id) || 0;
+      const timeSinceLastAction = Math.floor((Date.now() - lastAction) / 1000);
+      const relationships = parseRelationships(agent.relationshipsJson);
+      const roomContext = `${roomChars.length} people in room`;
+
+      try {
+        // Ask LLM what to do
+        const action = await this.aiService.decideAction(
+          agent.systemPrompt,
+          character.name,
+          formattedEvents,
+          relationships,
+          timeSinceLastAction,
+          roomContext,
+        );
+
+        if (action) {
+          await this.executeAIAction(agent, character, action);
+          this.lastResponseTime.set(agent.id, Date.now());
+        }
+      } catch (error) {
+        console.error(`AI agent ${character.name} failed to decide action:`, error);
+      }
+    }
   }
 
   /**

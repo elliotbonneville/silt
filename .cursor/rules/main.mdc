@@ -220,6 +220,7 @@ docs(api): add JSDoc to CommandRegistry
 - Commit after completing function + tests
 
 ### When to Commit
+- After user verifies functionality works as expected
 - After function + tests complete
 - Before switching tasks
 - Before breaks
