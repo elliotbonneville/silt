@@ -32,11 +32,9 @@ interface RoomData {
 export function RoomDetailPanel({
   room,
   events,
-  onClose,
 }: {
   room: RoomData;
   events: readonly AdminGameEvent[];
-  onClose: () => void;
 }): JSX.Element {
   const exits = Object.entries(room.exits);
   const [historicalEvents, setHistoricalEvents] = useState<AdminGameEvent[]>([]);
@@ -73,15 +71,12 @@ export function RoomDetailPanel({
   }, [events, historicalEvents, room.id]);
 
   return (
-    <div className="w-full h-full border-l border-gray-700 bg-gray-800 p-4 flex flex-col">
-      <div className="flex items-center justify-between mb-4">
+    <div className="w-full h-full border-l border-gray-700 bg-gray-800 p-4 overflow-y-auto">
+      <div className="mb-4">
         <h3 className="text-lg font-semibold text-cyan-400">{room.name}</h3>
-        <button type="button" onClick={onClose} className="text-gray-400 hover:text-white text-xl">
-          ×
-        </button>
       </div>
 
-      <div className="space-y-4 text-sm flex-shrink-0">
+      <div className="space-y-4 text-sm">
         <div>
           <div className="text-gray-500 text-xs mb-1">ID</div>
           <div className="font-mono text-gray-300">{room.id}</div>
@@ -145,23 +140,25 @@ export function RoomDetailPanel({
         </div>
       </div>
 
-      <div className="flex flex-col flex-1 min-h-0 mt-4">
+      <div className="mt-4">
         <div className="text-gray-500 text-xs mb-2">
           Recent Events ({roomEvents.length})<span className="ml-2 text-green-400">● Live</span>
         </div>
-        <div className="flex-1 overflow-y-auto space-y-2 bg-gray-900 rounded p-3 font-mono">
-          {roomEvents.length === 0 ? (
-            <div className="text-gray-500 text-sm">No recent events</div>
-          ) : (
-            roomEvents.map((event) => (
-              <div key={event.id} className="text-sm border-l-2 border-gray-700 pl-3 py-1">
-                <div className="text-gray-500 text-xs mb-1">
-                  {new Date(event.timestamp).toLocaleTimeString()}
+        <div className="overflow-y-auto bg-gray-900 rounded p-3 font-mono" style={{ height: '400px' }}>
+          <div className="space-y-2">
+            {roomEvents.length === 0 ? (
+              <div className="text-gray-500 text-sm">No recent events</div>
+            ) : (
+              roomEvents.map((event) => (
+                <div key={event.id} className="text-sm border-l-2 border-gray-700 pl-3 py-1">
+                  <div className="text-gray-500 text-xs mb-1">
+                    {new Date(event.timestamp).toLocaleTimeString()}
+                  </div>
+                  <div className="text-gray-300 break-words">{event.content || event.type}</div>
                 </div>
-                <div className="text-gray-300">{event.content || event.type}</div>
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>

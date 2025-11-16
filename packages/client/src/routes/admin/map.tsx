@@ -220,26 +220,26 @@ export function AdminMap(): JSX.Element {
         </ReactFlow>
       </div>
 
-      {/* Resize handle */}
-      {selectedRoom && (
-        <button
-          type="button"
-          onMouseDown={handleMouseDown}
-          className="w-1 bg-gray-700 hover:bg-cyan-500 cursor-col-resize transition-colors select-none"
-        />
-      )}
+      {/* Resize handle - always visible */}
+      <button
+        type="button"
+        onMouseDown={handleMouseDown}
+        className="w-1 bg-gray-700 hover:bg-cyan-500 cursor-col-resize transition-colors select-none"
+      />
 
       {/* Side panel - resizable */}
       {selectedRoom ? (
-        <div style={{ width: `${panelWidth}px`, minWidth: '300px', maxWidth: '800px' }}>
-          <RoomDetailPanel
-            room={selectedRoom}
-            events={allEvents}
-            onClose={() => setSelectedRoom(null)}
-          />
+        <div
+          style={{ width: `${panelWidth}px`, minWidth: '300px', maxWidth: '800px' }}
+          className="h-full"
+        >
+          <RoomDetailPanel room={selectedRoom} events={allEvents} />
         </div>
       ) : (
-        <div className="w-96 border-l border-gray-700 bg-gray-800 p-4 flex items-center justify-center">
+        <div
+          style={{ width: `${panelWidth}px`, minWidth: '300px', maxWidth: '800px' }}
+          className="h-full border-l border-gray-700 bg-gray-800 p-4 flex items-center justify-center"
+        >
           <div className="text-center text-gray-500">
             <div className="text-4xl mb-2">🗺️</div>
             <div className="text-sm">Select a room to view details</div>
