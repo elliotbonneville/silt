@@ -6,7 +6,8 @@ import type { AIAgent, Character } from '@prisma/client';
 import type { GameEvent } from '@silt/shared';
 import { nanoid } from 'nanoid';
 import { findAllAIAgents, updateAIAgent } from '../database/index.js';
-import { AIService } from './ai-service.js';
+import type { AIAction, AIService } from './ai/index.js';
+import { parseRelationships, serializeRelationships } from './ai/index.js';
 import { formatEventForAI } from './event-formatter.js';
 
 const MIN_RESPONSE_COOLDOWN_MS = 3000; // Minimum 3 seconds between responses
@@ -94,7 +95,7 @@ export class AIAgentManager {
       const timeSinceLastResponse = Math.floor((Date.now() - lastResponse) / 1000);
 
       // Load memory
-      const relationships = AIService.parseRelationships(agent.relationshipsJson);
+      const relationships = parseRelationships(agent.relationshipsJson);
       const roomContext = `${charactersInRoom.length} people present`;
 
       try {
@@ -130,7 +131,7 @@ export class AIAgentManager {
 
         // Save updated memory
         await updateAIAgent(agent.id, {
-          relationshipsJson: AIService.serializeRelationships(relationships),
+          relationshipsJson: serializeRelationships(relationships),
           lastActionAt: new Date(),
         });
 
@@ -160,5 +161,15 @@ export class AIAgentManager {
     }
 
     return responseEvents;
+  }
+
+  /**
+   * Execute an AI action (for proactive behavior)
+   * Returns command string that can be executed
+   */
+  buildCommandFromAction(action: AIAction): string {
+    const args = action.arguments;
+    const argValues = Object.values(args).filter((v) => typeof v === 'string');
+    return `${action.action} ${argValues.join(' ')}`.trim();
   }
 }
