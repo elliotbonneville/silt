@@ -6,16 +6,10 @@ import { Handle, Position } from 'reactflow';
 import type { RoomData } from './map-types.js';
 
 const handleStyle = {
-  width: '12px',
-  height: '12px',
+  width: 12,
+  height: 12,
   border: '2px solid #6b7280',
   background: '#1f2937',
-};
-
-const hiddenHandleStyle = {
-  ...handleStyle,
-  opacity: 0,
-  pointerEvents: 'none' as const,
 };
 
 export function RoomNode({
@@ -43,145 +37,107 @@ export function RoomNode({
 
   return (
     <>
-      {/* Target handles (incoming connections) */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="top"
-        style={exitDirections.has('top') ? handleStyle : hiddenHandleStyle}
-      />
-      <Handle
-        type="target"
-        position={Position.Bottom}
-        id="bottom"
-        style={exitDirections.has('bottom') ? handleStyle : hiddenHandleStyle}
-      />
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="left"
-        style={exitDirections.has('left') ? handleStyle : hiddenHandleStyle}
-      />
-      <Handle
-        type="target"
-        position={Position.Right}
-        id="right"
-        style={exitDirections.has('right') ? handleStyle : hiddenHandleStyle}
-      />
+      {/* Cardinal directions */}
+      {exitDirections.has('top') && (
+        <>
+          <Handle type="target" position={Position.Top} id="top" style={handleStyle} />
+          <Handle type="source" position={Position.Top} id="top" style={handleStyle} />
+        </>
+      )}
+      {exitDirections.has('bottom') && (
+        <>
+          <Handle type="target" position={Position.Bottom} id="bottom" style={handleStyle} />
+          <Handle type="source" position={Position.Bottom} id="bottom" style={handleStyle} />
+        </>
+      )}
+      {exitDirections.has('left') && (
+        <>
+          <Handle type="target" position={Position.Left} id="left" style={handleStyle} />
+          <Handle type="source" position={Position.Left} id="left" style={handleStyle} />
+        </>
+      )}
+      {exitDirections.has('right') && (
+        <>
+          <Handle type="target" position={Position.Right} id="right" style={handleStyle} />
+          <Handle type="source" position={Position.Right} id="right" style={handleStyle} />
+        </>
+      )}
 
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="top-right"
-        style={{
-          ...(exitDirections.has('top-right') ? handleStyle : hiddenHandleStyle),
-          left: '100%',
-          transform: 'translate(-50%, -50%)',
-        }}
-      />
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="top-left"
-        style={{
-          ...(exitDirections.has('top-left') ? handleStyle : hiddenHandleStyle),
-          left: 0,
-          transform: 'translate(-50%, -50%)',
-        }}
-      />
-      <Handle
-        type="target"
-        position={Position.Bottom}
-        id="bottom-right"
-        style={{
-          ...(exitDirections.has('bottom-right') ? handleStyle : hiddenHandleStyle),
-          left: '100%',
-          top: '100%',
-          transform: 'translate(-50%, -50%)',
-        }}
-      />
-      <Handle
-        type="target"
-        position={Position.Bottom}
-        id="bottom-left"
-        style={{
-          ...(exitDirections.has('bottom-left') ? handleStyle : hiddenHandleStyle),
-          left: 0,
-          top: '100%',
-          transform: 'translate(-50%, -50%)',
-        }}
-      />
-
-      {/* Source handles (outgoing connections) */}
-      <Handle
-        type="source"
-        position={Position.Top}
-        id="top"
-        style={exitDirections.has('top') ? handleStyle : hiddenHandleStyle}
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="bottom"
-        style={exitDirections.has('bottom') ? handleStyle : hiddenHandleStyle}
-      />
-      <Handle
-        type="source"
-        position={Position.Left}
-        id="left"
-        style={exitDirections.has('left') ? handleStyle : hiddenHandleStyle}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="right"
-        style={exitDirections.has('right') ? handleStyle : hiddenHandleStyle}
-      />
-
-      <Handle
-        type="source"
-        position={Position.Top}
-        id="top-right"
-        style={{
-          ...(exitDirections.has('top-right') ? handleStyle : hiddenHandleStyle),
-          left: '100%',
-          top: 0,
-          transform: 'translate(-50%, -50%)',
-        }}
-      />
-      <Handle
-        type="source"
-        position={Position.Top}
-        id="top-left"
-        style={{
-          ...(exitDirections.has('top-left') ? handleStyle : hiddenHandleStyle),
-          left: 0,
-          top: 0,
-          transform: 'translate(-50%, -50%)',
-        }}
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="bottom-right"
-        style={{
-          ...(exitDirections.has('bottom-right') ? handleStyle : hiddenHandleStyle),
-          left: '100%',
-          top: '100%',
-          transform: 'translate(-50%, -50%)',
-        }}
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="bottom-left"
-        style={{
-          ...(exitDirections.has('bottom-left') ? handleStyle : hiddenHandleStyle),
-          left: 0,
-          top: '100%',
-          transform: 'translate(-50%, -50%)',
-        }}
-      />
+      {/* Diagonal corners */}
+      {exitDirections.has('top-right') && (
+        <>
+          <Handle
+            type="target"
+            position={Position.Top}
+            id="top-right"
+            style={{ ...handleStyle, left: '100%', top: 0, transform: 'translate(-50%, -50%)' }}
+          />
+          <Handle
+            type="source"
+            position={Position.Top}
+            id="top-right"
+            style={{ ...handleStyle, left: '100%', top: 0, transform: 'translate(-50%, -50%)' }}
+          />
+        </>
+      )}
+      {exitDirections.has('top-left') && (
+        <>
+          <Handle
+            type="target"
+            position={Position.Top}
+            id="top-left"
+            style={{ ...handleStyle, left: 0, top: 0, transform: 'translate(-50%, -50%)' }}
+          />
+          <Handle
+            type="source"
+            position={Position.Top}
+            id="top-left"
+            style={{ ...handleStyle, left: 0, top: 0, transform: 'translate(-50%, -50%)' }}
+          />
+        </>
+      )}
+      {exitDirections.has('bottom-right') && (
+        <>
+          <Handle
+            type="target"
+            position={Position.Bottom}
+            id="bottom-right"
+            style={{
+              ...handleStyle,
+              left: '100%',
+              top: '100%',
+              transform: 'translate(-50%, -50%)',
+            }}
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="bottom-right"
+            style={{
+              ...handleStyle,
+              left: '100%',
+              top: '100%',
+              transform: 'translate(-50%, -50%)',
+            }}
+          />
+        </>
+      )}
+      {exitDirections.has('bottom-left') && (
+        <>
+          <Handle
+            type="target"
+            position={Position.Bottom}
+            id="bottom-left"
+            style={{ ...handleStyle, left: 0, top: '100%', transform: 'translate(-50%, -50%)' }}
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="bottom-left"
+            style={{ ...handleStyle, left: 0, top: '100%', transform: 'translate(-50%, -50%)' }}
+          />
+        </>
+      )}
 
       <RoomNodeContent room={room} isSelected={isSelected} onClick={onClick} />
     </>

@@ -7,7 +7,6 @@ import ReactFlow, {
   Background,
   Controls,
   type Edge,
-  MarkerType,
   MiniMap,
   type Node,
   type NodeTypes,
@@ -15,6 +14,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { RoomDetailPanel } from '../../components/admin/RoomDetailPanel.js';
 import { useAdminSocketContext } from '../../contexts/AdminSocketContext.js';
+import { createEdges } from './map-edges.js';
 import { calculateRoomPositions } from './map-layout.js';
 import type { RoomData } from './map-types.js';
 import { RoomNode } from './RoomNode.js';
@@ -32,8 +32,11 @@ export function AdminMap(): JSX.Element {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [loading, setLoading] = useState(true);
+  const [panelWidth, setPanelWidth] = useState(384); // 24rem = 384px
+  const [isResizing, setIsResizing] = useState(false);
   const nodePositionsRef = useRef<Record<string, { x: number; y: number }>>({});
   const lastProcessedEventRef = useRef<string>('');
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const loadMapData = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -58,73 +61,8 @@ export function AdminMap(): JSX.Element {
         },
       }));
 
-      // Map directions to handle IDs (including corners)
-      const directionToHandle: Record<string, string> = {
-        north: 'top',
-        south: 'bottom',
-        east: 'right',
-        west: 'left',
-        up: 'top',
-        down: 'bottom',
-        northeast: 'top-right',
-        northwest: 'top-left',
-        southeast: 'bottom-right',
-        southwest: 'bottom-left',
-      };
-
-      const oppositeHandle: Record<string, string> = {
-        top: 'bottom',
-        bottom: 'top',
-        left: 'right',
-        right: 'left',
-        'top-right': 'bottom-left',
-        'top-left': 'bottom-right',
-        'bottom-right': 'top-left',
-        'bottom-left': 'top-right',
-      };
-
-      // Check if connection is bidirectional
-      const isBidirectional = (roomId: string, targetId: string): boolean => {
-        const targetRoom = roomData.find((r) => r.id === targetId);
-        if (!targetRoom) return false;
-        return Object.values(targetRoom.exits).includes(roomId);
-      };
-
-      // Create directional edges with proper handle positions
-      const flowEdges: Edge[] = [];
-      const processedEdges = new Set<string>();
-
-      for (const room of roomData) {
-        for (const [direction, targetId] of Object.entries(room.exits)) {
-          const edgeKey = `${room.id}-${targetId}`;
-          const reverseKey = `${targetId}-${room.id}`;
-
-          if (processedEdges.has(edgeKey) || processedEdges.has(reverseKey)) {
-            continue;
-          }
-
-          const sourceHandle = directionToHandle[direction.toLowerCase()] || 'right';
-          const targetHandle = oppositeHandle[sourceHandle] || 'left';
-          const isTwoWay = isBidirectional(room.id, targetId);
-
-          flowEdges.push({
-            id: edgeKey,
-            source: room.id,
-            target: targetId,
-            sourceHandle,
-            targetHandle,
-            type: 'straight',
-            animated: false,
-            style: { stroke: isTwoWay ? '#6b7280' : '#f59e0b', strokeWidth: 2 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: isTwoWay ? '#6b7280' : '#f59e0b' },
-            ...(isTwoWay
-              ? { markerStart: { type: MarkerType.ArrowClosed, color: '#6b7280' } }
-              : {}),
-          });
-
-          processedEdges.add(edgeKey);
-        }
-      }
+      // Create edges
+      const flowEdges = createEdges(roomData);
 
       setNodes(flowNodes);
       setEdges(flowEdges);
@@ -207,6 +145,43 @@ export function AdminMap(): JSX.Element {
     updateMapData();
   }, [allEvents, selectedRoom]);
 
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent): void => {
+      if (!isResizing || !resizeRef.current) return;
+      const delta = resizeRef.current.startX - e.clientX;
+      const newWidth = resizeRef.current.startWidth + delta;
+      setPanelWidth(Math.max(300, Math.min(800, newWidth)));
+    };
+
+    const handleMouseUp = (): void => {
+      setIsResizing(false);
+      resizeRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+    return undefined;
+  }, [isResizing]);
+
+  const handleMouseDown = (e: React.MouseEvent): void => {
+    e.preventDefault();
+    setIsResizing(true);
+    resizeRef.current = {
+      startX: e.clientX,
+      startWidth: panelWidth,
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center bg-gray-950">
@@ -232,13 +207,24 @@ export function AdminMap(): JSX.Element {
         </ReactFlow>
       </div>
 
-      {/* Side panel - always visible */}
-      {selectedRoom ? (
-        <RoomDetailPanel
-          room={selectedRoom}
-          events={allEvents}
-          onClose={() => setSelectedRoom(null)}
+      {/* Resize handle */}
+      {selectedRoom && (
+        <button
+          type="button"
+          onMouseDown={handleMouseDown}
+          className="w-1 bg-gray-700 hover:bg-cyan-500 cursor-col-resize transition-colors select-none"
         />
+      )}
+
+      {/* Side panel - resizable */}
+      {selectedRoom ? (
+        <div style={{ width: `${panelWidth}px`, minWidth: '300px', maxWidth: '800px' }}>
+          <RoomDetailPanel
+            room={selectedRoom}
+            events={allEvents}
+            onClose={() => setSelectedRoom(null)}
+          />
+        </div>
       ) : (
         <div className="w-96 border-l border-gray-700 bg-gray-800 p-4 flex items-center justify-center">
           <div className="text-center text-gray-500">

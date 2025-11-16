@@ -73,7 +73,7 @@ export function RoomDetailPanel({
   }, [events, historicalEvents, room.id]);
 
   return (
-    <div className="w-96 border-l border-gray-700 bg-gray-800 p-4 overflow-y-auto">
+    <div className="w-full h-full border-l border-gray-700 bg-gray-800 p-4 overflow-y-auto">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-cyan-400">{room.name}</h3>
         <button type="button" onClick={onClose} className="text-gray-400 hover:text-white text-xl">
@@ -99,9 +99,9 @@ export function RoomDetailPanel({
               <div className="text-gray-500 text-xs">No exits</div>
             ) : (
               exits.map(([direction, targetRoomId]) => (
-                <div key={direction} className="flex items-center gap-2">
-                  <span className="text-yellow-400 w-16">{direction}:</span>
-                  <span className="font-mono text-gray-400 text-xs">{targetRoomId}</span>
+                <div key={direction} className="flex items-center gap-3">
+                  <span className="text-yellow-400 text-xs w-20 flex-shrink-0">{direction}:</span>
+                  <span className="font-mono text-gray-400 text-xs truncate">{targetRoomId}</span>
                 </div>
               ))
             )}
