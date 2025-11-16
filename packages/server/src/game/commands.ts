@@ -3,7 +3,7 @@
  */
 
 import type { Character } from '@prisma/client';
-import type { GameEvent } from '@silt/shared';
+import type { CommandOutput, GameEvent } from '@silt/shared';
 import { executeAttackCommand } from './combat-commands.js';
 import {
   executeDropCommand,
@@ -26,6 +26,7 @@ export interface CommandContext {
 export interface CommandResult {
   readonly success: boolean;
   readonly events: readonly GameEvent[];
+  readonly output?: CommandOutput; // Structured response to command issuer
   readonly error?: string;
 }
 

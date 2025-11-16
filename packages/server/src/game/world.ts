@@ -95,33 +95,68 @@ export class World {
   }
 
   /**
-   * Get formatted room description including occupants and items
+   * Get structured room data including occupants and items
    */
-  async getRoomDescription(roomId: string, excludePlayerName?: string): Promise<string> {
+  async getRoomData(
+    roomId: string,
+    excludePlayerName?: string,
+  ): Promise<{
+    name: string;
+    description: string;
+    exits: { direction: string; roomName?: string }[];
+    occupants: { id: string; name: string; isNpc: boolean }[];
+    items: { id: string; name: string }[];
+  } | null> {
     const room = this.rooms.get(roomId);
     if (!room) {
-      return 'Unknown location';
+      return null;
     }
 
-    const exits = Array.from(room.exits.keys()).join(', ');
+    // Get exits with room names
+    const exits = Array.from(room.exits.entries()).map(([direction, targetRoomId]) => {
+      const roomName = this.rooms.get(targetRoomId)?.name;
+      return roomName ? { direction, roomName } : { direction };
+    });
 
     // Get other players in room
     const players = this.getPlayersInRoomFn ? this.getPlayersInRoomFn(roomId) : [];
-    const otherPlayers = players.filter((p) => p.name !== excludePlayerName).map((p) => p.name);
+    const occupants = players
+      .filter((p) => p.name !== excludePlayerName)
+      .map((p) => ({ id: '', name: p.name, isNpc: false })); // TODO: Add character IDs
 
     // Get items in room (exclude spawn points - they're ambient, not interactive)
     const items = await findItemsInRoom(roomId);
-    const regularItems = items.filter((item) => item.itemType !== 'spawn_point');
-    const itemNames = regularItems.map((item) => item.name);
+    const regularItems = items
+      .filter((item) => item.itemType !== 'spawn_point')
+      .map((item) => ({ id: item.id, name: item.name }));
 
-    let description = `${room.name}\n\n${room.description}\n\nExits: ${exits}`;
+    return {
+      name: room.name,
+      description: room.description,
+      exits,
+      occupants,
+      items: regularItems,
+    };
+  }
 
-    if (itemNames.length > 0) {
-      description += `\n\nYou see: ${itemNames.join(', ')}`;
+  /**
+   * Get formatted room description including occupants and items
+   */
+  async getRoomDescription(roomId: string, excludePlayerName?: string): Promise<string> {
+    const roomData = await this.getRoomData(roomId, excludePlayerName);
+    if (!roomData) {
+      return 'Unknown location';
     }
 
-    if (otherPlayers.length > 0) {
-      description += `\n\nAlso here: ${otherPlayers.join(', ')}`;
+    const exitsList = roomData.exits.map((e) => e.direction).join(', ');
+    let description = `${roomData.name}\n\n${roomData.description}\n\nExits: ${exitsList}`;
+
+    if (roomData.items.length > 0) {
+      description += `\n\nYou see: ${roomData.items.map((i) => i.name).join(', ')}`;
+    }
+
+    if (roomData.occupants.length > 0) {
+      description += `\n\nAlso here: ${roomData.occupants.map((o) => o.name).join(', ')}`;
     }
 
     return description;

@@ -2,31 +2,29 @@
  * Navigation commands - movement and room observation
  */
 
-import { nanoid } from 'nanoid';
 import type { CommandContext, CommandResult } from './commands.js';
+import { createEvent } from './create-game-event.js';
 
 /**
  * Execute the 'look' command
  */
 export async function executeLookCommand(ctx: CommandContext): Promise<CommandResult> {
-  const content = await ctx.world.getRoomDescription(
-    ctx.character.currentRoomId,
-    ctx.character.name,
-  );
+  const roomData = await ctx.world.getRoomData(ctx.character.currentRoomId, ctx.character.name);
+
+  if (!roomData) {
+    return { success: false, events: [], error: 'Current room not found' };
+  }
+
+  const text = await ctx.world.getRoomDescription(ctx.character.currentRoomId, ctx.character.name);
 
   return {
     success: true,
-    events: [
-      {
-        id: `event-${nanoid(10)}`,
-        type: 'room_description',
-        timestamp: Date.now(),
-        originRoomId: ctx.character.currentRoomId,
-        content,
-        relatedEntities: [],
-        visibility: 'private',
-      },
-    ],
+    events: [],
+    output: {
+      type: 'room',
+      data: roomData,
+      text,
+    },
   };
 }
 
@@ -45,36 +43,28 @@ export async function executeGoCommand(
   if (!ctx.world.getRoom(targetRoomId))
     return { success: false, events: [], error: 'Target room not found' };
 
-  const roomDescription = await ctx.world.getRoomDescription(targetRoomId, ctx.character.name);
+  const roomData = await ctx.world.getRoomData(targetRoomId, ctx.character.name);
+  if (!roomData) {
+    return { success: false, events: [], error: 'Target room not found' };
+  }
+
+  const text = await ctx.world.getRoomDescription(targetRoomId, ctx.character.name);
 
   return {
     success: true,
     events: [
-      {
-        id: `event-${nanoid(10)}`,
-        type: 'movement',
-        timestamp: Date.now(),
-        originRoomId: ctx.character.currentRoomId,
-        content: `${ctx.character.name} moves ${direction}.`,
-        relatedEntities: [],
-        visibility: 'room',
-        data: {
-          actorId: ctx.character.id,
-          actorName: ctx.character.name,
-          fromRoomId: ctx.character.currentRoomId,
-          toRoomId: targetRoomId,
-          direction,
-        },
-      },
-      {
-        id: `event-${nanoid(10)}`,
-        type: 'room_description',
-        timestamp: Date.now(),
-        originRoomId: targetRoomId,
-        content: roomDescription,
-        relatedEntities: [],
-        visibility: 'private',
-      },
+      createEvent('movement', ctx.character.currentRoomId, 'room', {
+        actorId: ctx.character.id,
+        actorName: ctx.character.name,
+        fromRoomId: ctx.character.currentRoomId,
+        toRoomId: targetRoomId,
+        direction,
+      }),
     ],
+    output: {
+      type: 'room',
+      data: roomData,
+      text,
+    },
   };
 }

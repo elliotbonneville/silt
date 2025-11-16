@@ -3,40 +3,13 @@
  */
 
 import type { Character } from '@prisma/client';
-import type { EventVisibility, GameEvent, GameEventType } from '@silt/shared';
-import { nanoid } from 'nanoid';
+import type { GameEvent } from '@silt/shared';
 import { updateCharacter } from '../database/character-repository.js';
 import { createItem, findItemsInInventory, moveItemToRoom } from '../database/item-repository.js';
 import type { CommandContext, CommandResult } from './commands.js';
+import { createEvent } from './create-game-event.js';
 
 const ATTACK_COOLDOWN_MS = 2000; // 2 seconds between attacks
-
-/**
- * Create a game event with common fields filled in
- */
-function createEvent(
-  type: GameEventType,
-  roomId: string,
-  content: string,
-  visibility: EventVisibility,
-  data?: Record<string, unknown>,
-): GameEvent {
-  const event: GameEvent = {
-    id: `event-${nanoid(10)}`,
-    type,
-    timestamp: Date.now(),
-    originRoomId: roomId,
-    content,
-    relatedEntities: [],
-    visibility,
-  };
-
-  if (data !== undefined) {
-    return { ...event, data };
-  }
-
-  return event;
-}
 
 /**
  * Execute the 'attack' command
@@ -97,21 +70,15 @@ export async function executeAttackCommand(
 
   // Combat hit event
   events.push(
-    createEvent(
-      'combat_hit',
-      roomId,
-      `${attacker.name} attacks ${target.name} for ${damage} damage! (${newHp}/${target.maxHp} HP)`,
-      'room',
-      {
-        actorId: attacker.id,
-        actorName: attacker.name,
-        targetId: target.id,
-        targetName: target.name,
-        damage,
-        targetHp: newHp,
-        targetMaxHp: target.maxHp,
-      },
-    ),
+    createEvent('combat_hit', roomId, 'room', {
+      actorId: attacker.id,
+      actorName: attacker.name,
+      targetId: target.id,
+      targetName: target.name,
+      damage,
+      targetHp: newHp,
+      targetMaxHp: target.maxHp,
+    }),
   );
 
   // Check for death
@@ -145,19 +112,13 @@ export async function executeAttackCommand(
     });
 
     events.push(
-      createEvent(
-        'death',
-        roomId,
-        `💀 ${target.name} has been slain by ${attacker.name}!`,
-        'room',
-        {
-          victimId: target.id,
-          victimName: target.name,
-          killerId: attacker.id,
-          killerName: attacker.name,
-          itemsDropped: inventory.length,
-        },
-      ),
+      createEvent('death', roomId, 'room', {
+        victimId: target.id,
+        victimName: target.name,
+        killerId: attacker.id,
+        killerName: attacker.name,
+        itemsDropped: inventory.length,
+      }),
     );
   }
 

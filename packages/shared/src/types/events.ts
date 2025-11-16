@@ -38,7 +38,10 @@ export type GameEventType =
   | 'ambient'
   | 'system'
   | 'connection'
-  | 'state_change';
+  | 'state_change'
+  | 'ai:decision' // AI considering what to do
+  | 'ai:action' // AI executing an action
+  | 'ai:error'; // AI encountered an error
 
 /**
  * Core game event structure

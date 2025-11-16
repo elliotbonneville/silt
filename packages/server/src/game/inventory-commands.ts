@@ -3,8 +3,6 @@
  */
 
 import type { Character } from '@prisma/client';
-import type { EventVisibility, GameEvent, GameEventType } from '@silt/shared';
-import { nanoid } from 'nanoid';
 import { updateCharacter } from '../database/character-repository.js';
 import {
   equipItem,
@@ -16,50 +14,23 @@ import {
   unequipItem,
 } from '../database/item-repository.js';
 import type { CommandContext, CommandResult } from './commands.js';
-
-/**
- * Create a game event with common fields filled in
- */
-function createEvent(
-  type: GameEventType,
-  roomId: string,
-  content: string,
-  visibility: EventVisibility,
-  data?: Record<string, unknown>,
-): GameEvent {
-  const event: GameEvent = {
-    id: `event-${nanoid(10)}`,
-    type,
-    timestamp: Date.now(),
-    originRoomId: roomId,
-    content,
-    relatedEntities: [],
-    visibility,
-  };
-
-  if (data !== undefined) {
-    return { ...event, data };
-  }
-
-  return event;
-}
+import { createEvent } from './create-game-event.js';
 
 /**
  * Execute the 'inventory' command
  */
 export async function executeInventoryCommand(ctx: CommandContext): Promise<CommandResult> {
   const items = await findItemsInInventory(ctx.character.id);
-  const roomId = ctx.character.currentRoomId;
 
   if (items.length === 0) {
     return {
       success: true,
-      events: [
-        createEvent('system', roomId, 'Inventory is empty.', 'private', {
-          actorId: ctx.character.id,
-          items: [],
-        }),
-      ],
+      events: [],
+      output: {
+        type: 'system_message',
+        data: { message: 'Inventory is empty.' },
+        text: 'Inventory is empty.',
+      },
     };
   }
 
@@ -67,6 +38,7 @@ export async function executeInventoryCommand(ctx: CommandContext): Promise<Comm
     id: item.id,
     name: item.name,
     isEquipped: item.isEquipped,
+    itemType: item.itemType,
   }));
 
   const itemList = items
@@ -75,12 +47,12 @@ export async function executeInventoryCommand(ctx: CommandContext): Promise<Comm
 
   return {
     success: true,
-    events: [
-      createEvent('system', roomId, `Inventory:\n${itemList}`, 'private', {
-        actorId: ctx.character.id,
-        items: itemData,
-      }),
-    ],
+    events: [],
+    output: {
+      type: 'inventory',
+      data: { items: itemData },
+      text: `Inventory:\n${itemList}`,
+    },
   };
 }
 
@@ -108,18 +80,12 @@ export async function executeTakeCommand(
   return {
     success: true,
     events: [
-      createEvent(
-        'item_pickup',
-        ctx.character.currentRoomId,
-        `${ctx.character.name} takes ${item.name}.`,
-        'room',
-        {
-          actorId: ctx.character.id,
-          actorName: ctx.character.name,
-          itemId: item.id,
-          itemName: item.name,
-        },
-      ),
+      createEvent('item_pickup', ctx.character.currentRoomId, 'room', {
+        actorId: ctx.character.id,
+        actorName: ctx.character.name,
+        itemId: item.id,
+        itemName: item.name,
+      }),
     ],
   };
 }
@@ -149,18 +115,12 @@ export async function executeDropCommand(
   return {
     success: true,
     events: [
-      createEvent(
-        'item_drop',
-        ctx.character.currentRoomId,
-        `${ctx.character.name} drops ${item.name}.`,
-        'room',
-        {
-          actorId: ctx.character.id,
-          actorName: ctx.character.name,
-          itemId: item.id,
-          itemName: item.name,
-        },
-      ),
+      createEvent('item_drop', ctx.character.currentRoomId, 'room', {
+        actorId: ctx.character.id,
+        actorName: ctx.character.name,
+        itemId: item.id,
+        itemName: item.name,
+      }),
     ],
   };
 }
@@ -189,19 +149,28 @@ export async function executeExamineCommand(
   if (stats.healing) statLines.push(`Healing: ${stats.healing} HP`);
 
   const statsText = statLines.length > 0 ? `\n${statLines.join('\n')}` : '';
-  const content = `${item.name}\n${item.description}${statsText}\nType: ${item.itemType}`;
+  const text = `${item.name}\n${item.description}${statsText}\nType: ${item.itemType}`;
+
+  // Filter out undefined values for exact optional properties
+  const cleanedStats: { damage?: number; defense?: number; healing?: number } = {};
+  if (stats.damage !== undefined) cleanedStats.damage = stats.damage;
+  if (stats.defense !== undefined) cleanedStats.defense = stats.defense;
+  if (stats.healing !== undefined) cleanedStats.healing = stats.healing;
 
   return {
     success: true,
-    events: [
-      createEvent('system', ctx.character.currentRoomId, content, 'private', {
-        actorId: ctx.character.id,
-        itemId: item.id,
-        itemName: item.name,
+    events: [],
+    output: {
+      type: 'item_detail',
+      data: {
+        id: item.id,
+        name: item.name,
+        description: item.description,
         itemType: item.itemType,
-        stats,
-      }),
-    ],
+        stats: cleanedStats,
+      },
+      text,
+    },
   };
 }
 
@@ -237,14 +206,12 @@ export async function executeEquipCommand(
 
   return {
     success: true,
-    events: [
-      createEvent('system', ctx.character.currentRoomId, `Equipped ${item.name}.`, 'private', {
-        actorId: ctx.character.id,
-        itemId: item.id,
-        itemName: item.name,
-        itemType: item.itemType,
-      }),
-    ],
+    events: [],
+    output: {
+      type: 'system_message',
+      data: { message: `Equipped ${item.name}.`, context: { itemId: item.id } },
+      text: `Equipped ${item.name}.`,
+    },
   };
 }
 
@@ -270,13 +237,12 @@ export async function executeUnequipCommand(
 
   return {
     success: true,
-    events: [
-      createEvent('system', ctx.character.currentRoomId, `Unequipped ${item.name}.`, 'private', {
-        actorId: ctx.character.id,
-        itemId: item.id,
-        itemName: item.name,
-      }),
-    ],
+    events: [],
+    output: {
+      type: 'system_message',
+      data: { message: `Unequipped ${item.name}.`, context: { itemId: item.id } },
+      text: `Unequipped ${item.name}.`,
+    },
   };
 }
 

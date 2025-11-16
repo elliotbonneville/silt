@@ -2,8 +2,8 @@
  * Social commands - communication and emotes
  */
 
-import { nanoid } from 'nanoid';
 import type { CommandContext, CommandResult } from './commands.js';
+import { createEvent } from './create-game-event.js';
 
 /**
  * Execute the 'say' command
@@ -14,20 +14,11 @@ export function executeSayCommand(ctx: CommandContext, message: string): Command
   return {
     success: true,
     events: [
-      {
-        id: `event-${nanoid(10)}`,
-        type: 'speech',
-        timestamp: Date.now(),
-        originRoomId: ctx.character.currentRoomId,
-        content: `${ctx.character.name} says: "${message}"`,
-        relatedEntities: [],
-        visibility: 'room',
-        data: {
-          actorId: ctx.character.id,
-          actorName: ctx.character.name,
-          message,
-        },
-      },
+      createEvent('speech', ctx.character.currentRoomId, 'room', {
+        actorId: ctx.character.id,
+        actorName: ctx.character.name,
+        message,
+      }),
     ],
   };
 }
@@ -41,20 +32,11 @@ export function executeShoutCommand(ctx: CommandContext, message: string): Comma
   return {
     success: true,
     events: [
-      {
-        id: `event-${nanoid(10)}`,
-        type: 'shout',
-        timestamp: Date.now(),
-        originRoomId: ctx.character.currentRoomId,
-        content: `${ctx.character.name} shouts: "${message}"`,
-        relatedEntities: [],
-        visibility: 'room',
-        data: {
-          actorId: ctx.character.id,
-          actorName: ctx.character.name,
-          message,
-        },
-      },
+      createEvent('shout', ctx.character.currentRoomId, 'room', {
+        actorId: ctx.character.id,
+        actorName: ctx.character.name,
+        message,
+      }),
     ],
   };
 }
@@ -68,20 +50,11 @@ export function executeEmoteCommand(ctx: CommandContext, action: string): Comman
   return {
     success: true,
     events: [
-      {
-        id: `event-${nanoid(10)}`,
-        type: 'emote',
-        timestamp: Date.now(),
-        originRoomId: ctx.character.currentRoomId,
-        content: `${ctx.character.name} ${action}`,
-        relatedEntities: [],
-        visibility: 'room',
-        data: {
-          actorId: ctx.character.id,
-          actorName: ctx.character.name,
-          action,
-        },
-      },
+      createEvent('emote', ctx.character.currentRoomId, 'room', {
+        actorId: ctx.character.id,
+        actorName: ctx.character.name,
+        action,
+      }),
     ],
   };
 }

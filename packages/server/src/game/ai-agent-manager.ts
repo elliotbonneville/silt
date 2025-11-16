@@ -8,7 +8,6 @@ import { findAllAIAgents } from '../database/index.js';
 import type { AIAction, AIService } from './ai/index.js';
 import { parseRelationships } from './ai/index.js';
 import { aiDebugLogger } from './ai-debug-logger.js';
-import { formatEventForAI } from './event-formatter.js';
 
 const MIN_RESPONSE_COOLDOWN_MS = 3000; // Minimum 3 seconds between responses
 const EVENT_CONTEXT_WINDOW_MS = 30000; // Consider events from last 30 seconds
@@ -37,6 +36,8 @@ export class AIAgentManager {
     const agents = await findAllAIAgents();
     for (const agent of agents) {
       this.agents.set(agent.characterId, agent);
+      // Initialize response time to now (prevents huge timeSinceLastAction)
+      this.lastResponseTime.set(agent.id, Date.now());
     }
     return agents;
   }
@@ -87,8 +88,8 @@ export class AIAgentManager {
       const queuedEvents = this.getQueuedEvents(characterId);
       if (queuedEvents.length === 0) continue;
 
-      // Process queued events
-      const formattedEvents = queuedEvents.map(formatEventForAI);
+      // Process queued events (already formatted by EventPropagator with agent's perspective)
+      const formattedEvents = queuedEvents.map((e) => e.content || 'Something happened.');
       const lastAction = this.lastResponseTime.get(agent.id) || 0;
       const timeSinceLastAction = Math.floor((Date.now() - lastAction) / 1000);
       const relationships = parseRelationships(agent.relationshipsJson);
@@ -139,6 +140,12 @@ export class AIAgentManager {
    * AI agents receive ALL events just like players do
    */
   queueEventForAgent(agentId: string, event: GameEvent): void {
+    // Skip room descriptions - AI doesn't need these
+    if (event.type === 'room_description') return;
+
+    // Skip events from this agent itself
+    if (event.data?.['actorId'] === agentId) return;
+
     const queue = this.agentEventQueues.get(agentId) || [];
     queue.push(event);
 

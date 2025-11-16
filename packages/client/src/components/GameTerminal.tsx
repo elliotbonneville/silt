@@ -30,85 +30,24 @@ export function GameTerminal({ events, currentCharacterId }: GameTerminalProps):
 
       {events.map((event) => (
         <div key={event.id} className="mb-2">
-          <EventLine event={event} currentCharacterId={currentCharacterId} />
+          <EventLine
+            event={event}
+            currentCharacterId={currentCharacterId}
+            structuredData={'structuredData' in event ? event.structuredData : undefined}
+          />
         </div>
       ))}
     </div>
   );
 }
 
-/**
- * Format event content to use first-person ("You") or third-person based on actor
- */
-function formatEventContent(event: GameEvent, isCurrentPlayer: boolean): string {
-  const content = event.content || '';
-
-  // If no data or not current player, use default content
-  if (!isCurrentPlayer || !event.data) {
-    return content;
-  }
-
-  const data = event.data;
-  const actorName = data['actorName'];
-  if (typeof actorName !== 'string') {
-    return content;
-  }
-
-  // Convert third-person to second-person for different event types
-  switch (event.type) {
-    case 'item_pickup': {
-      const itemName = data['itemName'];
-      return typeof itemName === 'string' ? `You take ${itemName}.` : content;
-    }
-
-    case 'item_drop': {
-      const itemName = data['itemName'];
-      return typeof itemName === 'string' ? `You drop ${itemName}.` : content;
-    }
-
-    case 'speech': {
-      const message = data['message'];
-      return typeof message === 'string' ? `You say: "${message}"` : content;
-    }
-
-    case 'shout': {
-      const message = data['message'];
-      return typeof message === 'string' ? `You shout: "${message}"` : content;
-    }
-
-    case 'movement': {
-      const direction = data['direction'];
-      return typeof direction === 'string' ? `You move ${direction}.` : content;
-    }
-
-    case 'combat_hit': {
-      const targetName = data['targetName'];
-      const damage = data['damage'];
-      const targetHp = data['targetHp'];
-      const targetMaxHp = data['targetMaxHp'];
-      if (
-        typeof targetName === 'string' &&
-        typeof damage === 'number' &&
-        typeof targetHp === 'number' &&
-        typeof targetMaxHp === 'number'
-      ) {
-        return `You attack ${targetName} for ${damage} damage! (${targetHp}/${targetMaxHp} HP)`;
-      }
-      return content;
-    }
-
-    default:
-      // For unknown types, do basic replacement
-      return content.replace(new RegExp(`^${actorName}`, 'i'), 'You');
-  }
-}
-
 interface EventLineProps {
   readonly event: GameEvent;
   readonly currentCharacterId: string | undefined;
+  readonly structuredData?: unknown; // For structured output rendering
 }
 
-function EventLine({ event, currentCharacterId }: EventLineProps): JSX.Element {
+function EventLine({ event, structuredData }: EventLineProps): JSX.Element {
   const getEventColor = (): string => {
     switch (event.type) {
       case 'room_description':
@@ -135,15 +74,49 @@ function EventLine({ event, currentCharacterId }: EventLineProps): JSX.Element {
     }
   };
 
-  // Check if this event is about the current player
-  const actorId = event.data?.['actorId'];
-  const isCurrentPlayer = typeof actorId === 'string' && actorId === currentCharacterId;
+  // Check if this is structured inventory output
+  if (
+    structuredData &&
+    typeof structuredData === 'object' &&
+    structuredData !== null &&
+    'type' in structuredData &&
+    'data' in structuredData
+  ) {
+    const output = structuredData;
 
-  // Format content based on perspective
-  const formattedContent = formatEventContent(event, isCurrentPlayer);
+    if (
+      output.type === 'inventory' &&
+      output.data &&
+      typeof output.data === 'object' &&
+      output.data !== null &&
+      'items' in output.data &&
+      Array.isArray(output.data.items)
+    ) {
+      const items = output.data.items;
+
+      if (items.length === 0) {
+        return <div className="text-gray-500">Inventory is empty.</div>;
+      }
+
+      return (
+        <div className={getEventColor()}>
+          <div className="font-bold mb-1">Inventory:</div>
+          {items.map((item: { id: string; name: string; isEquipped: boolean }) => (
+            <div key={item.id} className="text-gray-400">
+              - {item.name}
+              {item.isEquipped ? ' (equipped)' : ''}
+            </div>
+          ))}
+        </div>
+      );
+    }
+  }
+
+  // Content is already formatted by the server
+  const content = event.content || '';
 
   // Split multi-line content into separate lines
-  const lines = formattedContent.split('\n') || [];
+  const lines = content.split('\n') || [];
 
   // For room descriptions, make the first line (room name) bold
   if (event.type === 'room_description' && lines.length > 0) {

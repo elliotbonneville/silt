@@ -11,6 +11,7 @@ import { ActorRegistry } from './actor-registry.js';
 import type { AIAction } from './ai/index.js';
 import { AIService } from './ai/index.js';
 import { AIAgentManager } from './ai-agent-manager.js';
+import { aiDebugLogger } from './ai-debug-logger.js';
 import { CharacterManager } from './character-manager.js';
 import { CommandHandler } from './command-handler.js';
 import { type CommandContext, parseAndExecuteCommand } from './commands.js';
@@ -96,7 +97,7 @@ export class GameEngine {
 
     // Build room graph and event propagator
     this.roomGraph = new RoomGraph(this.world.getAllRooms());
-    this.eventPropagator = new EventPropagator(this.roomGraph, this.actorRegistry);
+    this.eventPropagator = new EventPropagator(this.roomGraph, this.actorRegistry, this.io);
 
     // Initialize command handler
     this.commandHandler = new CommandHandler(this.characterManager, this.eventPropagator);
@@ -109,10 +110,33 @@ export class GameEngine {
       this.world,
     );
 
+    // Set up AI debug logger to broadcast through event system
+    aiDebugLogger.setEventPropagator(this.eventPropagator);
+
+    // Set up admin socket handlers
+    this.setupAdminHandlers();
+
     // Start AI proactive behavior loop
     this.aiAgentManager.startProactiveLoop();
 
     this.initialized = true;
+  }
+
+  /**
+   * Set up admin socket event handlers
+   */
+  private setupAdminHandlers(): void {
+    this.io.on('connection', (socket) => {
+      socket.on('admin:join', () => {
+        socket.join('admin');
+        console.info(`Admin client connected: ${socket.id}`);
+      });
+
+      socket.on('admin:leave', () => {
+        socket.leave('admin');
+        console.info(`Admin client disconnected: ${socket.id}`);
+      });
+    });
   }
 
   /**
@@ -166,6 +190,11 @@ export class GameEngine {
     if (!result.success && result.error) {
       this.io.to(socketId).emit('game:error', { message: result.error });
       return;
+    }
+
+    // Send structured output to command issuer (look, inventory, etc.)
+    if (result.output) {
+      this.io.to(socketId).emit('game:output', result.output);
     }
 
     // Handle movement
