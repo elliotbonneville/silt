@@ -8,6 +8,7 @@ import { prisma } from './client.js';
 
 /**
  * Save a game event to the database
+ * Stores raw event data; formatting happens at delivery time
  */
 export async function saveGameEvent(event: GameEvent): Promise<void> {
   await prisma.gameEvent.create({

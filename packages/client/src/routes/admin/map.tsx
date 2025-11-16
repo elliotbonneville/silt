@@ -56,7 +56,7 @@ export function AdminMap(): JSX.Element {
         position: positions[room.id] || { x: 0, y: 0 },
         data: {
           room,
-          isSelected: selectedRoom?.id === room.id,
+          isSelected: false,
           onClick: () => setSelectedRoom(room),
         },
       }));
@@ -71,11 +71,24 @@ export function AdminMap(): JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [selectedRoom?.id]);
+  }, []);
 
   useEffect(() => {
     loadMapData();
   }, [loadMapData]);
+
+  // Update node selection state when selectedRoom changes
+  useEffect(() => {
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          isSelected: node.id === selectedRoom?.id,
+        },
+      })),
+    );
+  }, [selectedRoom?.id]);
 
   // Update room data reactively based on events
   useEffect(() => {

@@ -2,6 +2,7 @@
  * Admin routes - debugging and monitoring endpoints
  */
 
+import type { GameEvent, GameEventType } from '@silt/shared';
 import type { Express } from 'express';
 import {
   findAllCharacters,
@@ -10,6 +11,7 @@ import {
   getEventCount,
   queryGameEvents,
 } from '../database/index.js';
+import { formatEventOmniscient } from '../game/event-formatter.js';
 
 export function setupAdminRoutes(app: Express): void {
   /**
@@ -107,16 +109,27 @@ export function setupAdminRoutes(app: Express): void {
       ]);
 
       res.json({
-        events: events.map((e) => ({
-          id: e.id,
-          type: e.type,
-          timestamp: e.timestamp.getTime(),
-          originRoomId: e.originRoomId,
-          content: e.content,
-          data: e.dataJson ? JSON.parse(e.dataJson) : undefined,
-          visibility: e.visibility,
-          attenuated: e.attenuated,
-        })),
+        events: events.map((e) => {
+          const data = e.dataJson ? JSON.parse(e.dataJson) : undefined;
+          const gameEvent: GameEvent = {
+            id: e.id,
+            // biome-ignore lint/plugin: Database string needs to be narrowed to GameEventType
+            type: e.type as GameEventType,
+            timestamp: e.timestamp.getTime(),
+            originRoomId: e.originRoomId,
+            ...(e.content ? { content: e.content } : {}),
+            data,
+            // biome-ignore lint/plugin: Database string needs to be narrowed to EventVisibility
+            visibility: e.visibility as 'room' | 'global' | 'private',
+            attenuated: e.attenuated,
+            relatedEntities: [],
+          };
+          // Format with omniscient perspective for admin view
+          return {
+            ...gameEvent,
+            content: formatEventOmniscient(gameEvent),
+          };
+        }),
         total,
         limit,
         offset,
