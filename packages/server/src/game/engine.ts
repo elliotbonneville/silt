@@ -150,6 +150,8 @@ export class GameEngine {
     const context: CommandContext = {
       character,
       world: this.world,
+      getCharacterInRoom: (roomId: string, name: string) =>
+        this.characterManager.getCharacterInRoom(roomId, name),
     };
 
     const result = await parseAndExecuteCommand(commandText, context);
@@ -177,6 +179,32 @@ export class GameEngine {
     // Broadcast all events
     for (const event of result.events) {
       this.broadcastEvent(event, socketId);
+    }
+
+    // Send character stat updates after events that modify stats
+    const combatEvent = result.events.find((e) => e.type === 'combat_hit');
+    const hasEquipment = result.events.some((e) => e.type === 'item_equip' || e.type === 'system');
+
+    // Update attacker stats
+    if (combatEvent || hasEquipment) {
+      this.characterManager.sendCharacterUpdate(character.id);
+    }
+
+    // Update victim stats if combat occurred
+    if (combatEvent?.data) {
+      const targetId = combatEvent.data['targetId'];
+      if (typeof targetId === 'string') {
+        this.characterManager.sendCharacterUpdate(targetId);
+      }
+    }
+
+    // Handle death events - disconnect dead characters
+    const deathEvent = result.events.find((e) => e.type === 'death');
+    if (deathEvent?.data) {
+      const victimId = deathEvent.data['victimId'];
+      if (typeof victimId === 'string') {
+        await this.characterManager.handleCharacterDeath(victimId);
+      }
     }
   }
 

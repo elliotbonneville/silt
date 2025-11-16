@@ -81,6 +81,22 @@ function formatEventContent(event: GameEvent, isCurrentPlayer: boolean): string 
       return typeof direction === 'string' ? `You move ${direction}.` : content;
     }
 
+    case 'combat_hit': {
+      const targetName = data['targetName'];
+      const damage = data['damage'];
+      const targetHp = data['targetHp'];
+      const targetMaxHp = data['targetMaxHp'];
+      if (
+        typeof targetName === 'string' &&
+        typeof damage === 'number' &&
+        typeof targetHp === 'number' &&
+        typeof targetMaxHp === 'number'
+      ) {
+        return `You attack ${targetName} for ${damage} damage! (${targetHp}/${targetMaxHp} HP)`;
+      }
+      return content;
+    }
+
     default:
       // For unknown types, do basic replacement
       return content.replace(new RegExp(`^${actorName}`, 'i'), 'You');

@@ -5,6 +5,7 @@
 import type { Character } from '@prisma/client';
 import type { GameEvent } from '@silt/shared';
 import { nanoid } from 'nanoid';
+import { executeAttackCommand } from './combat-commands.js';
 import {
   executeDropCommand,
   executeEquipCommand,
@@ -18,6 +19,7 @@ import type { World } from './world.js';
 export interface CommandContext {
   readonly character: Character;
   readonly world: World;
+  readonly getCharacterInRoom: (roomId: string, name: string) => Character | undefined;
 }
 
 export interface CommandResult {
@@ -260,6 +262,12 @@ export async function parseAndExecuteCommand(
     case 'unequip':
     case 'remove':
       return await executeUnequipCommand(ctx, args.join(' '));
+
+    case 'attack':
+    case 'kill':
+    case 'fight':
+    case 'hit':
+      return await executeAttackCommand(ctx, args.join(' '), ctx.getCharacterInRoom);
 
     default:
       return { success: false, events: [], error: `Unknown command: ${command}` };

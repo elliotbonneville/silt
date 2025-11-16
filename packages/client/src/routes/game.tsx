@@ -33,6 +33,17 @@ export default function GameRoute(): JSX.Element {
         }
       },
     );
+
+    // Listen for character stat updates
+    const handleCharacterUpdate = (updated: Partial<CharacterResponse>) => {
+      setCharacter((prev) => (prev ? { ...prev, ...updated } : prev));
+    };
+
+    socket.on('character:update', handleCharacterUpdate);
+
+    return () => {
+      socket.off('character:update', handleCharacterUpdate);
+    };
   }, [socket, characterId, navigate, isConnected]);
 
   // Wait for socket connection

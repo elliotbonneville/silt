@@ -4,6 +4,7 @@
 
 import type { Character } from '@prisma/client';
 import type { CharacterListItem } from '@silt/shared';
+import type { Server } from 'socket.io';
 import {
   createCharacter,
   deleteCharacter,
@@ -19,7 +20,10 @@ export class CharacterManager {
   private readonly activeCharacters = new Map<string, Character>();
   private readonly playerSessions = new Map<string, PlayerSession>();
 
-  constructor(private readonly world: World) {}
+  constructor(
+    private readonly world: World,
+    private readonly io?: Server,
+  ) {}
 
   /**
    * Get characters for a username
@@ -125,6 +129,85 @@ export class CharacterManager {
    */
   getCharacter(characterId: string): Character | undefined {
     return this.activeCharacters.get(characterId);
+  }
+
+  /**
+   * Get character in a room by name
+   */
+  getCharacterInRoom(roomId: string, name: string): Character | undefined {
+    for (const character of this.activeCharacters.values()) {
+      if (
+        character.currentRoomId === roomId &&
+        character.name.toLowerCase() === name.toLowerCase()
+      ) {
+        return character;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Get all characters in a room
+   */
+  getCharactersInRoom(roomId: string): Character[] {
+    return Array.from(this.activeCharacters.values()).filter(
+      (char) => char.currentRoomId === roomId,
+    );
+  }
+
+  /**
+   * Get socket ID for a character
+   */
+  getSocketIdForCharacter(characterId: string): string | undefined {
+    for (const [socketId, session] of this.playerSessions.entries()) {
+      if (session.characterId === characterId) {
+        return socketId;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Send character stat update to client
+   */
+  sendCharacterUpdate(characterId: string): void {
+    if (!this.io) return;
+
+    const character = this.getCharacter(characterId);
+    const socketId = this.getSocketIdForCharacter(characterId);
+
+    if (character && socketId) {
+      this.io.to(socketId).emit('character:update', {
+        hp: character.hp,
+        maxHp: character.maxHp,
+        attackPower: character.attackPower,
+        defense: character.defense,
+      });
+    }
+  }
+
+  /**
+   * Handle character death - notify and disconnect
+   */
+  async handleCharacterDeath(characterId: string): Promise<void> {
+    if (!this.io) return;
+
+    const socketId = this.getSocketIdForCharacter(characterId);
+    if (!socketId) return;
+
+    // Notify the player they died
+    this.io.to(socketId).emit('game:death', {
+      message: 'You have died! Your character is gone forever.',
+    });
+
+    // Disconnect after a short delay
+    setTimeout(() => {
+      if (this.io && socketId) {
+        this.io.to(socketId).emit('game:disconnect', {
+          reason: 'death',
+        });
+      }
+    }, 3000);
   }
 
   /**
