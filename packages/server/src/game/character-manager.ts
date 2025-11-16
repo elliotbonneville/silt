@@ -26,6 +26,27 @@ export class CharacterManager {
   ) {}
 
   /**
+   * Load NPC characters into active memory (called on server start)
+   */
+  async loadNPCs(): Promise<Character[]> {
+    const { prisma } = await import('../database/client.js');
+
+    // Find all characters without an accountId (NPCs)
+    const npcs = await prisma.character.findMany({
+      where: {
+        accountId: null,
+        isAlive: true,
+      },
+    });
+
+    for (const npc of npcs) {
+      this.activeCharacters.set(npc.id, npc);
+    }
+
+    return npcs;
+  }
+
+  /**
    * Get characters for a username
    * Creates account if it doesn't exist
    */

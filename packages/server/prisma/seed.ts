@@ -136,7 +136,64 @@ async function main(): Promise<void> {
   });
 
   // biome-ignore lint/suspicious/noConsole: Seed script output
-  console.log('✓ Created 5 items');
+  console.log('✓ Created 5 items in rooms');
+
+  // Create NPC characters (enemies for combat testing)
+  const goblin = await prisma.character.create({
+    data: {
+      id: 'goblin-1',
+      name: 'Goblin',
+      currentRoomId: forestPath.id,
+      spawnRoomId: forestPath.id,
+      hp: 30,
+      maxHp: 30,
+      attackPower: 8,
+      defense: 3,
+      isAlive: true,
+      isDead: false,
+    },
+  });
+
+  await prisma.character.create({
+    data: {
+      id: 'training-dummy',
+      name: 'Training Dummy',
+      currentRoomId: trainingGrounds.id,
+      spawnRoomId: trainingGrounds.id,
+      hp: 50,
+      maxHp: 50,
+      attackPower: 0,
+      defense: 0,
+      isAlive: true,
+      isDead: false,
+    },
+  });
+
+  // Give Goblin some loot
+  await prisma.item.create({
+    data: {
+      name: 'Rusty Dagger',
+      description: 'A crude dagger, worn from use.',
+      itemType: 'weapon',
+      statsJson: JSON.stringify({ damage: 3 }),
+      characterId: goblin.id,
+    },
+  });
+
+  await prisma.item.create({
+    data: {
+      name: 'Gold Coins',
+      description: 'A small pouch of gold coins.',
+      itemType: 'misc',
+      statsJson: JSON.stringify({}),
+      characterId: goblin.id,
+    },
+  });
+
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('✓ Created 2 NPCs');
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('✓ Created 2 items in NPC inventory');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('');
   // biome-ignore lint/suspicious/noConsole: Seed script output
@@ -169,6 +226,16 @@ async function main(): Promise<void> {
   console.log('  - Iron Sword (Forest Path)');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('  - Ancient Treasure (Dark Cave)');
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('');
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('NPCs:');
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('  - Goblin (Forest Path) - 30 HP, 8 ATK, 3 DEF');
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('    Carrying: Rusty Dagger, Gold Coins');
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('  - Training Dummy (Training Grounds) - 50 HP, 0 ATK');
 }
 
 main()

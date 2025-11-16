@@ -37,22 +37,23 @@ export class GameEngine {
     // Load world from database
     await this.world.initialize();
 
+    // Load NPC characters into memory and register as actors
+    const npcs = await this.characterManager.loadNPCs();
+    for (const npc of npcs) {
+      this.actorRegistry.addAIAgent(npc.id, npc.currentRoomId);
+    }
+
     // Set up player lookup for room descriptions
-    this.world.setPlayerLookupFunction((roomId) => {
-      const actorIds = this.actorRegistry.getActorsInRoom(roomId);
-      return Array.from(actorIds)
+    this.world.setPlayerLookupFunction((roomId) =>
+      Array.from(this.actorRegistry.getActorsInRoom(roomId))
         .map((id) => this.characterManager.getCharacter(id))
         .filter((char) => char !== null && char !== undefined)
-        .map((char) => ({ name: char.name }));
-    });
+        .map((char) => ({ name: char.name })),
+    );
 
-    // Build room graph for distance calculations
-    const rooms = this.world.getAllRooms();
-    this.roomGraph = new RoomGraph(rooms);
-
-    // Event propagator uses room graph and actor registry
+    // Build room graph and event propagator
+    this.roomGraph = new RoomGraph(this.world.getAllRooms());
     this.eventPropagator = new EventPropagator(this.roomGraph, this.actorRegistry);
-
     this.initialized = true;
   }
 

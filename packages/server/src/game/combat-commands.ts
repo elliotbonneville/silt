@@ -6,6 +6,7 @@ import type { Character } from '@prisma/client';
 import type { EventVisibility, GameEvent, GameEventType } from '@silt/shared';
 import { nanoid } from 'nanoid';
 import { updateCharacter } from '../database/character-repository.js';
+import { createItem, findItemsInInventory, moveItemToRoom } from '../database/item-repository.js';
 import type { CommandContext, CommandResult } from './commands.js';
 
 const ATTACK_COOLDOWN_MS = 2000; // 2 seconds between attacks
@@ -123,6 +124,26 @@ export async function executeAttackCommand(
       diedAt: new Date(),
     });
 
+    // Drop all inventory items to the room
+    const inventory = await findItemsInInventory(target.id);
+    for (const item of inventory) {
+      await moveItemToRoom(item.id, roomId);
+    }
+
+    // Create corpse item
+    const itemNames = inventory.map((i) => i.name).join(', ');
+    const corpseDescription =
+      inventory.length > 0
+        ? `The lifeless body of ${target.name}. You can see: ${itemNames}.`
+        : `The lifeless body of ${target.name}.`;
+
+    await createItem({
+      name: `${target.name}'s corpse`,
+      description: corpseDescription,
+      itemType: 'misc',
+      roomId,
+    });
+
     events.push(
       createEvent(
         'death',
@@ -134,6 +155,7 @@ export async function executeAttackCommand(
           victimName: target.name,
           killerId: attacker.id,
           killerName: attacker.name,
+          itemsDropped: inventory.length,
         },
       ),
     );
