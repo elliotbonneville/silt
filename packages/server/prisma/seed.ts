@@ -84,6 +84,21 @@ async function main(): Promise<void> {
   // biome-ignore lint/suspicious/noConsole: Seed script needs console output
   console.log('✓ Created 5 rooms');
 
+  // Create spawn points (special items for character respawning)
+  // Players spawn here when creating new characters
+  await prisma.item.create({
+    data: {
+      name: 'Town Fountain',
+      description: 'A shimmering fountain that seems to pulse with magical energy.',
+      itemType: 'spawn_point',
+      statsJson: JSON.stringify({}),
+      roomId: townSquare.id,
+    },
+  });
+
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('✓ Created 1 spawn point');
+
   // Create items
   await prisma.item.create({
     data: {
@@ -139,12 +154,12 @@ async function main(): Promise<void> {
   console.log('✓ Created 5 items in rooms');
 
   // Create NPC characters (enemies for combat testing)
+  // NPCs don't need spawn points - they're placed directly by admins
   const goblin = await prisma.character.create({
     data: {
       id: 'goblin-1',
       name: 'Goblin',
       currentRoomId: forestPath.id,
-      spawnRoomId: forestPath.id,
       hp: 30,
       maxHp: 30,
       attackPower: 8,
@@ -159,7 +174,6 @@ async function main(): Promise<void> {
       id: 'training-dummy',
       name: 'Training Dummy',
       currentRoomId: trainingGrounds.id,
-      spawnRoomId: trainingGrounds.id,
       hp: 50,
       maxHp: 50,
       attackPower: 0,
@@ -212,6 +226,12 @@ async function main(): Promise<void> {
   console.log('  - Forest Path');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('  - Dark Cave');
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('');
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('Spawn Points:');
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('  - Town Fountain (Town Square) - default spawn');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('');
   // biome-ignore lint/suspicious/noConsole: Seed script output

@@ -98,6 +98,11 @@ export async function executeTakeCommand(
 
   if (!item) return { success: false, events: [], error: `There is no "${itemName}" here.` };
 
+  // Prevent taking spawn points
+  if (item.itemType === 'spawn_point') {
+    return { success: false, events: [], error: `You can't take ${item.name}.` };
+  }
+
   await moveItemToInventory(item.id, ctx.character.id);
 
   return {
@@ -179,7 +184,6 @@ export async function executeExamineCommand(
 
   const stats = getItemStats(item);
   const statLines: string[] = [];
-
   if (stats.damage) statLines.push(`Damage: +${stats.damage}`);
   if (stats.defense) statLines.push(`Defense: +${stats.defense}`);
   if (stats.healing) statLines.push(`Healing: ${stats.healing} HP`);
@@ -280,11 +284,9 @@ export async function executeUnequipCommand(
  * Recalculate character stats based on equipped items
  */
 async function recalculateCharacterStats(character: Character): Promise<void> {
-  const items = await findItemsInInventory(character.id);
-  const equipped = items.filter((i) => i.isEquipped);
-
-  let attackPower = 10; // Base attack
-  let defense = 5; // Base defense
+  const equipped = (await findItemsInInventory(character.id)).filter((i) => i.isEquipped);
+  let attackPower = 10;
+  let defense = 5;
 
   for (const item of equipped) {
     const stats = getItemStats(item);

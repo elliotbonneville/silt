@@ -8,7 +8,8 @@ import { prisma } from './client.js';
 export interface CreateCharacterInput {
   readonly name: string;
   readonly accountId?: string;
-  readonly spawnRoomId: string;
+  readonly spawnPointId?: string; // Optional for NPCs
+  readonly currentRoomId?: string; // For NPCs placed directly
   readonly hp?: number;
   readonly maxHp?: number;
   readonly attackPower?: number;
@@ -31,10 +32,29 @@ export interface UpdateCharacterInput {
  * Create a new character
  */
 export async function createCharacter(input: CreateCharacterInput): Promise<Character> {
+  let currentRoomId: string;
+
+  // Players use spawn points, NPCs are placed directly
+  if (input.spawnPointId) {
+    const spawnPoint = await prisma.item.findUnique({
+      where: { id: input.spawnPointId },
+    });
+
+    if (!spawnPoint?.roomId) {
+      throw new Error('Invalid spawn point');
+    }
+
+    currentRoomId = spawnPoint.roomId;
+  } else if (input.currentRoomId) {
+    currentRoomId = input.currentRoomId;
+  } else {
+    throw new Error('Must provide either spawnPointId or currentRoomId');
+  }
+
   const data: {
     name: string;
     currentRoomId: string;
-    spawnRoomId: string;
+    spawnPointId?: string;
     hp: number;
     maxHp: number;
     attackPower: number;
@@ -42,13 +62,16 @@ export async function createCharacter(input: CreateCharacterInput): Promise<Char
     accountId?: string;
   } = {
     name: input.name,
-    currentRoomId: input.spawnRoomId,
-    spawnRoomId: input.spawnRoomId,
+    currentRoomId,
     hp: input.hp ?? 100,
     maxHp: input.maxHp ?? 100,
     attackPower: input.attackPower ?? 10,
     defense: input.defense ?? 5,
   };
+
+  if (input.spawnPointId !== undefined) {
+    data.spawnPointId = input.spawnPointId;
+  }
 
   if (input.accountId !== undefined) {
     data.accountId = input.accountId;

@@ -39,7 +39,7 @@ model Character {
   name          String
   accountId     String?
   currentRoomId String
-  spawnRoomId   String   // Where they respawn/started
+  spawnPointId  String?  // References spawn point item (players only, NPCs can be null)
   
   // Stats
   hp            Int      @default(100)

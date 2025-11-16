@@ -75,12 +75,12 @@ export class CharacterManager {
    */
   async createNewCharacter(username: string, name: string): Promise<Character> {
     const account = await findOrCreateAccount(username);
-    const startingRoomId = this.world.getStartingRoomId();
+    const spawnPointId = await this.world.getDefaultSpawnPointId();
 
     const character = await createCharacter({
       name,
       accountId: account.id,
-      spawnRoomId: startingRoomId,
+      spawnPointId,
     });
 
     return character;

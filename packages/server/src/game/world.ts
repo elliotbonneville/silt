@@ -69,6 +69,26 @@ export class World {
     return 'town-square';
   }
 
+  /**
+   * Get the default spawn point ID (Town Fountain)
+   */
+  async getDefaultSpawnPointId(): Promise<string> {
+    const { prisma } = await import('../database/client.js');
+
+    const spawnPoint = await prisma.item.findFirst({
+      where: {
+        itemType: 'spawn_point',
+        roomId: this.getStartingRoomId(),
+      },
+    });
+
+    if (!spawnPoint) {
+      throw new Error('No spawn point found in starting room');
+    }
+
+    return spawnPoint.id;
+  }
+
   getRoomExit(roomId: string, direction: string): string | undefined {
     const room = this.rooms.get(roomId);
     return room?.exits.get(direction.toLowerCase());
@@ -89,9 +109,10 @@ export class World {
     const players = this.getPlayersInRoomFn ? this.getPlayersInRoomFn(roomId) : [];
     const otherPlayers = players.filter((p) => p.name !== excludePlayerName).map((p) => p.name);
 
-    // Get items in room
+    // Get items in room (exclude spawn points - they're ambient, not interactive)
     const items = await findItemsInRoom(roomId);
-    const itemNames = items.map((item) => item.name);
+    const regularItems = items.filter((item) => item.itemType !== 'spawn_point');
+    const itemNames = regularItems.map((item) => item.name);
 
     let description = `${room.name}\n\n${room.description}\n\nExits: ${exits}`;
 
