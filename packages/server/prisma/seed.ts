@@ -208,6 +208,40 @@ async function main(): Promise<void> {
   console.log('✓ Created 2 NPCs');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('✓ Created 2 items in NPC inventory');
+
+  // Create AI-powered NPC (Town Crier)
+  const townCrier = await prisma.character.create({
+    data: {
+      id: 'town-crier',
+      name: 'Town Crier',
+      currentRoomId: townSquare.id,
+      hp: 100,
+      maxHp: 100,
+      attackPower: 5,
+      defense: 5,
+      isAlive: true,
+      isDead: false,
+    },
+  });
+
+  await prisma.aIAgent.create({
+    data: {
+      characterId: townCrier.id,
+      systemPrompt: `You are the Town Crier, a cheerful and helpful NPC in the town square.
+You welcome newcomers, provide helpful hints about the game, and share news about the town.
+You are friendly, enthusiastic, and never leave the town square.
+
+Personality: Cheerful, helpful, chatty but not overwhelming.
+Knowledge: Basic game mechanics, locations of nearby rooms, general advice.
+
+Keep responses to 1-2 sentences. Stay in character as a medieval town crier.`,
+      homeRoomId: townSquare.id,
+      maxRoomsFromHome: 0, // Never leaves town square
+    },
+  });
+
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('✓ Created 1 AI agent');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('');
   // biome-ignore lint/suspicious/noConsole: Seed script output
@@ -250,6 +284,8 @@ async function main(): Promise<void> {
   console.log('');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('NPCs:');
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('  - Town Crier (Town Square) - AI-POWERED');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('  - Goblin (Forest Path) - 30 HP, 8 ATK, 3 DEF');
   // biome-ignore lint/suspicious/noConsole: Seed script output

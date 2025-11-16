@@ -136,3 +136,27 @@ model GameEvent {
   @@map("game_events")
 }
 
+// AI Agent model - manages AI-powered NPCs
+model AIAgent {
+  id                 String   @id @default(cuid())
+  characterId        String   @unique
+  
+  // AI Configuration
+  systemPrompt       String   // Personality + backstory
+  homeRoomId         String   // Where the agent prefers to stay
+  maxRoomsFromHome   Int      @default(2)
+  
+  // Memory - stored as JSON
+  relationshipsJson  String   @default("{}")  // Map of characterId → relationship data
+  conversationJson   String   @default("[]")  // Recent conversation history
+  
+  // Action tracking
+  lastActionAt       DateTime @default(now())
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([characterId])
+  @@map("ai_agents")
+}
+

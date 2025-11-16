@@ -5,6 +5,7 @@
 
 import type { GameEvent } from '@silt/shared';
 import { EVENT_RANGES } from '@silt/shared';
+import type { Server } from 'socket.io';
 import type { ActorRegistry } from './actor-registry.js';
 import type { RoomGraph } from './room-graph.js';
 
@@ -12,6 +13,7 @@ export class EventPropagator {
   constructor(
     private readonly roomGraph: RoomGraph,
     private readonly actorRegistry: ActorRegistry,
+    private readonly io?: Server,
   ) {}
 
   /**
@@ -88,6 +90,33 @@ export class EventPropagator {
 
       default:
         return event;
+    }
+  }
+
+  /**
+   * Broadcast an event to all affected actors
+   */
+  broadcast(event: GameEvent): void {
+    if (!this.io) return;
+
+    const affectedActors = this.calculateAffectedActors(event);
+
+    for (const [actorId, attenuatedEvent] of affectedActors) {
+      if (this.actorRegistry.isPlayer(actorId)) {
+        const socketId = this.actorRegistry.getSocketId(actorId);
+        if (socketId) {
+          this.io.to(socketId).emit('game:event', attenuatedEvent);
+        }
+      }
+    }
+  }
+
+  /**
+   * Broadcast multiple events
+   */
+  broadcastMany(events: readonly GameEvent[]): void {
+    for (const event of events) {
+      this.broadcast(event);
     }
   }
 }

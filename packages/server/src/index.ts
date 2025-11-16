@@ -4,13 +4,17 @@
  */
 
 import { createServer } from 'node:http';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import * as dotenv from 'dotenv';
 import express from 'express';
 import { Server } from 'socket.io';
 import { GameEngine } from './game/engine.js';
 
-dotenv.config();
+// Load .env from project root (two directories up from this file)
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+dotenv.config({ path: resolve(__dirname, '../../../.env') });
 
 const app = express();
 const httpServer = createServer(app);

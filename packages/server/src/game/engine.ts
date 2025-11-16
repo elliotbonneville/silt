@@ -4,11 +4,14 @@
  */
 
 import type { Character } from '@prisma/client';
-import type { CharacterListItem, GameEvent, RoomState } from '@silt/shared';
+import type { CharacterListItem, RoomState } from '@silt/shared';
 import { nanoid } from 'nanoid';
 import type { Server } from 'socket.io';
 import { ActorRegistry } from './actor-registry.js';
+import { AIAgentManager } from './ai-agent-manager.js';
+import { AIService } from './ai-service.js';
 import { CharacterManager } from './character-manager.js';
+import { CommandHandler } from './command-handler.js';
 import { type CommandContext, parseAndExecuteCommand } from './commands.js';
 import { EventPropagator } from './event-propagator.js';
 import { RoomGraph } from './room-graph.js';
@@ -18,14 +21,25 @@ export class GameEngine {
   private readonly world: World;
   readonly characterManager: CharacterManager;
   private readonly actorRegistry: ActorRegistry;
+  private readonly aiAgentManager: AIAgentManager;
   private roomGraph!: RoomGraph;
   private eventPropagator!: EventPropagator;
+  private commandHandler!: CommandHandler;
   private initialized = false;
 
   constructor(private readonly io: Server) {
     this.world = new World();
     this.characterManager = new CharacterManager(this.world);
     this.actorRegistry = new ActorRegistry();
+
+    // Initialize AI service (uses mock mode if no real API key)
+    const apiKey = process.env['OPENAI_API_KEY'] || 'mock';
+    const aiService = new AIService(apiKey);
+    this.aiAgentManager = new AIAgentManager(aiService);
+
+    console.info(
+      apiKey === 'mock' ? '🤖 AI Service: MOCK MODE (no API calls)' : '🤖 AI Service: OpenAI API',
+    );
   }
 
   /**
@@ -43,6 +57,10 @@ export class GameEngine {
       this.actorRegistry.addAIAgent(npc.id, npc.currentRoomId);
     }
 
+    // Load AI agents
+    const aiAgents = await this.aiAgentManager.loadAgents();
+    console.info(`✅ Loaded ${aiAgents.length} AI agents`);
+
     // Set up player lookup for room descriptions
     this.world.setPlayerLookupFunction((roomId) =>
       Array.from(this.actorRegistry.getActorsInRoom(roomId))
@@ -51,9 +69,17 @@ export class GameEngine {
         .map((char) => ({ name: char.name })),
     );
 
-    // Build room graph and event propagator
+    // Build room graph and event propagator (with broadcasting capability)
     this.roomGraph = new RoomGraph(this.world.getAllRooms());
-    this.eventPropagator = new EventPropagator(this.roomGraph, this.actorRegistry);
+    this.eventPropagator = new EventPropagator(this.roomGraph, this.actorRegistry, this.io);
+
+    // Initialize command handler
+    this.commandHandler = new CommandHandler(
+      this.characterManager,
+      this.aiAgentManager,
+      this.eventPropagator,
+    );
+
     this.initialized = true;
   }
 
@@ -61,17 +87,15 @@ export class GameEngine {
    * Get characters for a username
    */
   async getCharactersForUsername(username: string): Promise<CharacterListItem[]> {
-    return await this.characterManager.getCharactersForUsername(username);
+    return this.characterManager.getCharactersForUsername(username);
   }
 
   /**
    * Create a new character for a username
    */
   async createNewCharacter(username: string, name: string): Promise<Character> {
-    if (!this.initialized) {
-      throw new Error('Game engine not initialized');
-    }
-    return await this.characterManager.createNewCharacter(username, name);
+    if (!this.initialized) throw new Error('Game engine not initialized');
+    return this.characterManager.createNewCharacter(username, name);
   }
 
   /**
@@ -86,7 +110,7 @@ export class GameEngine {
     this.actorRegistry.addPlayer(characterId, character.currentRoomId, socketId);
 
     // Broadcast player entered event
-    this.broadcastEvent({
+    this.eventPropagator.broadcast({
       id: `event-${nanoid()}`,
       type: 'player_entered',
       timestamp: Date.now(),
@@ -96,24 +120,20 @@ export class GameEngine {
       visibility: 'room',
     });
 
-    // Send initial room description
+    // Send initial room description (private event, send directly)
     const roomDescription = await this.world.getRoomDescription(
       character.currentRoomId,
       character.name,
     );
-
-    this.broadcastEvent(
-      {
-        id: `event-${nanoid()}`,
-        type: 'room_description',
-        timestamp: Date.now(),
-        originRoomId: character.currentRoomId,
-        content: roomDescription,
-        relatedEntities: [],
-        visibility: 'private',
-      },
-      socketId,
-    );
+    this.io.to(socketId).emit('game:event', {
+      id: `event-${nanoid()}`,
+      type: 'room_description',
+      timestamp: Date.now(),
+      originRoomId: character.currentRoomId,
+      content: roomDescription,
+      relatedEntities: [],
+      visibility: 'private',
+    });
 
     return character;
   }
@@ -125,8 +145,7 @@ export class GameEngine {
     const character = await this.characterManager.disconnectPlayer(socketId);
     if (!character) return;
 
-    // Broadcast player left event
-    this.broadcastEvent({
+    this.eventPropagator.broadcast({
       id: `event-${nanoid()}`,
       type: 'player_left',
       timestamp: Date.now(),
@@ -158,55 +177,23 @@ export class GameEngine {
     const result = await parseAndExecuteCommand(commandText, context);
 
     if (!result.success && result.error) {
-      // Send error only to the player who issued the command
       this.io.to(socketId).emit('game:error', { message: result.error });
       return;
     }
 
-    // Handle movement commands (update character location)
-    if (result.success && result.events.length > 0) {
-      const moveEvent = result.events.find((e) => e.type === 'movement');
-      if (moveEvent?.data && this.isMovementData(moveEvent.data)) {
-        // Update character location in memory
-        character.currentRoomId = moveEvent.data.toRoomId;
-        this.actorRegistry.moveActor(
-          character.id,
-          moveEvent.data.fromRoomId,
-          moveEvent.data.toRoomId,
-        );
-      }
+    // Handle movement
+    const moveEvent = result.events.find((e) => e.type === 'movement');
+    if (moveEvent?.data && this.isMovementData(moveEvent.data)) {
+      character.currentRoomId = moveEvent.data.toRoomId;
+      this.actorRegistry.moveActor(
+        character.id,
+        moveEvent.data.fromRoomId,
+        moveEvent.data.toRoomId,
+      );
     }
 
-    // Broadcast all events
-    for (const event of result.events) {
-      this.broadcastEvent(event, socketId);
-    }
-
-    // Send character stat updates after events that modify stats
-    const combatEvent = result.events.find((e) => e.type === 'combat_hit');
-    const hasEquipment = result.events.some((e) => e.type === 'item_equip' || e.type === 'system');
-
-    // Update attacker stats
-    if (combatEvent || hasEquipment) {
-      this.characterManager.sendCharacterUpdate(character.id);
-    }
-
-    // Update victim stats if combat occurred
-    if (combatEvent?.data) {
-      const targetId = combatEvent.data['targetId'];
-      if (typeof targetId === 'string') {
-        this.characterManager.sendCharacterUpdate(targetId);
-      }
-    }
-
-    // Handle death events - disconnect dead characters
-    const deathEvent = result.events.find((e) => e.type === 'death');
-    if (deathEvent?.data) {
-      const victimId = deathEvent.data['victimId'];
-      if (typeof victimId === 'string') {
-        await this.characterManager.handleCharacterDeath(victimId);
-      }
-    }
+    // Process command results (broadcast events, AI responses, stats, death)
+    await this.commandHandler.processResults(result, character);
   }
 
   /**
@@ -227,72 +214,28 @@ export class GameEngine {
    */
   getCharacterRoomState(characterId: string): RoomState {
     const character = this.characterManager.getCharacter(characterId);
-    if (!character) {
-      throw new Error('Character not found');
-    }
+    if (!character) throw new Error('Character not found');
 
     const room = this.world.getRoom(character.currentRoomId);
-    if (!room) {
-      throw new Error('Room not found');
-    }
+    if (!room) throw new Error('Room not found');
 
-    const actors = this.actorRegistry.getActorsInRoom(character.currentRoomId);
-    const occupants = Array.from(actors)
+    const occupants = Array.from(this.actorRegistry.getActorsInRoom(character.currentRoomId))
       .filter((id) => id !== characterId)
-      .map((id) => {
-        const char = this.characterManager.getCharacter(id);
-        return char
-          ? {
-              id: char.id,
-              name: char.name,
-              type: 'player' as const,
-            }
-          : null;
-      })
-      .filter((p) => p !== null);
+      .map((id) => this.characterManager.getCharacter(id))
+      .filter((char): char is Character => char !== null && char !== undefined)
+      .map((char) => ({ id: char.id, name: char.name, type: 'player' as const }));
 
-    const exits = Array.from(room.exits.entries()).map(([direction, targetId]) => {
-      const targetRoom = this.world.getRoom(targetId);
-      return {
-        direction,
-        roomId: targetId,
-        roomName: targetRoom?.name || 'Unknown',
-      };
-    });
+    const exits = Array.from(room.exits.entries()).map(([direction, targetId]) => ({
+      direction,
+      roomId: targetId,
+      roomName: this.world.getRoom(targetId)?.name || 'Unknown',
+    }));
 
     return {
-      room: {
-        id: room.id,
-        name: room.name,
-        description: room.description,
-      },
+      room: { id: room.id, name: room.name, description: room.description },
       exits,
       occupants,
       items: [],
     };
-  }
-
-  /**
-   * Broadcast an event to all affected actors
-   * @param event - The event to broadcast
-   * @param originSocketId - Optional socket ID of the player who triggered the event
-   */
-  private broadcastEvent(event: GameEvent, originSocketId?: string): void {
-    // Handle private events - only send to the originating player
-    if (event.visibility === 'private' && originSocketId) {
-      this.io.to(originSocketId).emit('game:event', event);
-      return;
-    }
-
-    const affectedActors = this.eventPropagator.calculateAffectedActors(event);
-
-    for (const [actorId, attenuatedEvent] of affectedActors) {
-      if (this.actorRegistry.isPlayer(actorId)) {
-        const socketId = this.actorRegistry.getSocketId(actorId);
-        if (socketId) {
-          this.io.to(socketId).emit('game:event', attenuatedEvent);
-        }
-      }
-    }
   }
 }
