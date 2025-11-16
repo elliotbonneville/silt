@@ -6,6 +6,7 @@
 import type { AIAgent, Character } from '@prisma/client';
 import type { CharacterListItem, RoomState } from '@silt/shared';
 import type { Server } from 'socket.io';
+import { updateCharacter } from '../database/character-repository.js';
 import { AIAgentActor } from './actor-interface.js';
 import { ActorRegistry } from './actor-registry.js';
 import type { AIAction } from './ai/index.js';
@@ -206,6 +207,9 @@ export class GameEngine {
         moveEvent.data.fromRoomId,
         moveEvent.data.toRoomId,
       );
+
+      // Persist character position to database
+      await updateCharacter(character.id, { currentRoomId: moveEvent.data.toRoomId });
     }
 
     // Process command results (broadcast events, AI responses, stats, death)
