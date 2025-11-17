@@ -1,4 +1,4 @@
-// Prisma schema for Silt MUD
+// Prisma schema for Silt
 // Database: SQLite for Iteration 1-2, PostgreSQL for Iteration 3+
 
 generator client {
@@ -27,6 +27,13 @@ model Account {
   username  String      @unique
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+  
+  // UI Preferences
+  themePreset      String @default("classic")      // 'classic', 'modern', 'dark', 'light'
+  fontFamily       String @default("courier-new") // Font key from FONT_FAMILIES
+  fontSize         Int    @default(14)             // 12-20px
+  lineWidth        Int    @default(80)             // 60-120 characters
+  customColorsJson String @default("{}")           // Custom color overrides
   
   characters Character[]
   

@@ -3,10 +3,15 @@
  * Types are imported from @silt/shared (single source of truth: Prisma → Zod → Shared)
  */
 
-import type { CharacterListItem, CharacterResponse } from '@silt/shared';
+import type {
+  CharacterListItem,
+  CharacterResponse,
+  FormattingPreferences,
+  UpdatePreferencesRequest,
+} from '@silt/shared';
 
 // Re-export types for convenience
-export type { CharacterListItem, CharacterResponse };
+export type { CharacterListItem, CharacterResponse, FormattingPreferences };
 
 const API_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3000';
 
@@ -65,4 +70,38 @@ export async function retireCharacter(id: string): Promise<void> {
     const error = await response.json();
     throw new Error(error.error || 'Failed to retire character');
   }
+}
+
+/**
+ * Get account formatting preferences
+ */
+export async function getPreferences(username: string): Promise<FormattingPreferences> {
+  const response = await fetch(`${API_URL}/api/accounts/${username}/preferences`);
+  if (!response.ok) {
+    throw new Error('Failed to get preferences');
+  }
+  const data = await response.json();
+  return data.preferences;
+}
+
+/**
+ * Update account formatting preferences
+ */
+export async function updatePreferences(
+  username: string,
+  preferences: UpdatePreferencesRequest,
+): Promise<FormattingPreferences> {
+  const response = await fetch(`${API_URL}/api/accounts/${username}/preferences`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(preferences),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to update preferences');
+  }
+
+  const data = await response.json();
+  return data.preferences;
 }

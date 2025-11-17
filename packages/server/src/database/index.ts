@@ -3,6 +3,7 @@
  */
 
 export * from './account-repository.js';
+export * from './account-repository.js';
 export * from './ai-agent-repository.js';
 export * from './character-repository.js';
 export * from './client.js';

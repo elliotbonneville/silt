@@ -1,5 +1,5 @@
 /**
- * Shared types and constants for Silt MUD
+ * Shared types and constants for Silt
  * Used by both client and server packages
  */
 
@@ -8,5 +8,6 @@ export * from './schemas/api.js';
 export * from './types/admin.js';
 export * from './types/branded.js';
 export * from './types/events.js';
+export * from './types/formatting.js';
 export * from './types/output.js';
 export * from './types/player.js';

@@ -3,11 +3,13 @@
  * Only route that connects to WebSocket
  */
 
-import type { CharacterResponse } from '@silt/shared';
+import type { CharacterResponse, FormattingPreferences } from '@silt/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { getPreferences, updatePreferences } from '../api/client.js';
 import { CommandInput } from '../components/CommandInput.js';
 import { GameTerminal } from '../components/GameTerminal.js';
+import { SettingsModal } from '../components/SettingsModal.js';
 import { useSocket } from '../hooks/useSocket.js';
 
 export default function GameRoute(): JSX.Element {
@@ -16,6 +18,35 @@ export default function GameRoute(): JSX.Element {
   const navigate = useNavigate();
   const [character, setCharacter] = useState<CharacterResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [preferences, setPreferences] = useState<FormattingPreferences | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Load preferences from username in localStorage
+  useEffect(() => {
+    const username = localStorage.getItem('username');
+    if (username) {
+      getPreferences(username)
+        .then(setPreferences)
+        .catch((err) => {
+          console.error('Failed to load preferences:', err);
+          // Set default preferences if loading fails
+          setPreferences({
+            themePreset: 'classic',
+            fontFamily: 'courier-new',
+            fontSize: 14,
+            lineWidth: 80,
+          });
+        });
+    } else {
+      // Set default preferences if no username
+      setPreferences({
+        themePreset: 'classic',
+        fontFamily: 'courier-new',
+        fontSize: 14,
+        lineWidth: 80,
+      });
+    }
+  }, []);
 
   // Connect to character when socket is ready
   useEffect(() => {
@@ -45,6 +76,16 @@ export default function GameRoute(): JSX.Element {
       socket.off('character:update', handleCharacterUpdate);
     };
   }, [socket, characterId, navigate, isConnected]);
+
+  const handleSavePreferences = async (newPrefs: Partial<FormattingPreferences>): Promise<void> => {
+    const username = localStorage.getItem('username');
+    if (!username) {
+      throw new Error('Username not found. Please log out and log back in.');
+    }
+
+    const updated = await updatePreferences(username, newPrefs);
+    setPreferences(updated);
+  };
 
   // Wait for socket connection
   if (!isConnected) {
@@ -76,12 +117,22 @@ export default function GameRoute(): JSX.Element {
       {/* Header */}
       <div className="border-b border-gray-700 bg-gray-800 px-4 py-2">
         <div className="flex items-center justify-between">
-          <h1 className="font-mono text-xl font-bold text-green-400">Silt MUD</h1>
-          <div className="text-sm text-gray-400">
-            Playing as:{' '}
-            <span className="text-green-400">
-              {character.name} ({character.hp}/{character.maxHp} HP)
-            </span>
+          <h1 className="font-mono text-xl font-bold text-green-400">Silt</h1>
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-gray-400">
+              Playing as:{' '}
+              <span className="text-green-400">
+                {character.name} ({character.hp}/{character.maxHp} HP)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="rounded bg-gray-700 px-3 py-1 text-sm text-gray-300 hover:bg-gray-600"
+              aria-label="Open settings"
+            >
+              ⚙️ Settings
+            </button>
           </div>
         </div>
       </div>
@@ -90,10 +141,24 @@ export default function GameRoute(): JSX.Element {
       {error && <div className="bg-red-900 px-4 py-2 text-center text-sm text-white">{error}</div>}
 
       {/* Game terminal */}
-      <GameTerminal events={events} currentCharacterId={character.id} />
+      <GameTerminal
+        events={events}
+        currentCharacterId={character.id}
+        preferences={preferences ?? undefined}
+      />
 
       {/* Command input */}
       <CommandInput onCommand={handleCommand} disabled={!character} />
+
+      {/* Settings modal */}
+      {preferences && (
+        <SettingsModal
+          isOpen={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          preferences={preferences}
+          onSave={handleSavePreferences}
+        />
+      )}
     </div>
   );
 }
