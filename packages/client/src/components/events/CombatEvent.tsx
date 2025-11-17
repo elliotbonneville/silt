@@ -11,8 +11,10 @@ interface CombatEventProps {
 
 export function CombatEvent({ content, color }: CombatEventProps): JSX.Element {
   return (
-    <div className="combat-event" style={{ color }}>
-      {content}
+    <div className="event-container event-container--combat">
+      <div className="combat-event" style={{ color }}>
+        {content}
+      </div>
     </div>
   );
 }

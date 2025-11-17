@@ -3,9 +3,29 @@
  * Uses spacing, weight, and opacity for hierarchy instead of size changes
  */
 
+/* Event Containers - handle spacing between different event types */
+.event-container {
+  margin-bottom: 0.25rem;
+}
+
+.event-container--room {
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.event-container--speech,
+.event-container--shout {
+  margin-bottom: 0.75rem;
+}
+
+.event-container--combat,
+.event-container--death {
+  margin-bottom: 0.5rem;
+}
+
 /* Room Events */
 .room-event {
-  margin-bottom: 1rem;
+  /* Container handles margins */
 }
 
 .room-event__name {
@@ -40,7 +60,7 @@
 
 /* Speech Events */
 .speech-event {
-  line-height: 1.5;
+  line-height: 1.7;
 }
 
 /* Movement Events */

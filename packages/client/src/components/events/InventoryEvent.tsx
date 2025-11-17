@@ -10,24 +10,29 @@ interface InventoryEventProps {
     readonly name: string;
     readonly isEquipped: boolean;
   }[];
-  readonly color: string;
-  readonly ambientColor: string;
+  readonly textColor: string;
 }
 
-export function InventoryEvent({ items, color, ambientColor }: InventoryEventProps): JSX.Element {
+export function InventoryEvent({ items, textColor }: InventoryEventProps): JSX.Element {
   if (items.length === 0) {
-    return <div style={{ color: ambientColor }}>Inventory is empty.</div>;
+    return (
+      <div className="event-container">
+        <div style={{ color: textColor, opacity: 0.7 }}>Inventory is empty.</div>
+      </div>
+    );
   }
 
   return (
-    <div style={{ color }}>
-      <div className="inventory-event__title">Inventory:</div>
-      {items.map((item) => (
-        <div key={item.id} className="inventory-event__item" style={{ color: ambientColor }}>
-          - {item.name}
-          {item.isEquipped && ' (equipped)'}
-        </div>
-      ))}
+    <div className="event-container">
+      <div style={{ color: textColor }}>
+        <div className="inventory-event__title">Inventory:</div>
+        {items.map((item) => (
+          <div key={item.id} className="inventory-event__item">
+            - {item.name}
+            {item.isEquipped && ' (equipped)'}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

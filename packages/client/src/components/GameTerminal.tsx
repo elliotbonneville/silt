@@ -94,7 +94,7 @@ export function GameTerminal({
           <div style={{ color: colors.ambient, opacity: 0.7 }}>Connecting to game server...</div>
         )}
 
-        {events.map((event, index) => {
+        {events.map((event) => {
           // Skip player_entered events for the current player
           if (
             event.type === 'player_entered' &&
@@ -106,27 +106,15 @@ export function GameTerminal({
             return null;
           }
 
-          const prevEvent = index > 0 ? events[index - 1] : null;
-          const needsExtraSpace =
-            prevEvent &&
-            (event.type === 'room_description' ||
-              prevEvent.type === 'room_description' ||
-              event.type === 'speech' ||
-              event.type === 'shout');
-
           return (
-            <div
+            <EventLine
               key={event.id}
-              className={needsExtraSpace ? 'mt-4 mb-1' : 'mb-1'}
-              style={{ opacity: event.type === 'ambient' ? 0.7 : 1 }}
-            >
-              <EventLine
-                event={event}
-                currentCharacterId={currentCharacterId}
-                structuredData={'structuredData' in event ? event.structuredData : undefined}
-                colors={colors}
-              />
-            </div>
+              event={event}
+              currentCharacterId={currentCharacterId}
+              structuredData={'structuredData' in event ? event.structuredData : undefined}
+              textColor={colors.text}
+              accentColor={colors.roomDescription}
+            />
           );
         })}
       </div>
@@ -138,17 +126,8 @@ interface EventLineProps {
   readonly event: GameEvent;
   readonly currentCharacterId: string | undefined;
   readonly structuredData?: unknown; // For structured output rendering
-  readonly colors: {
-    text: string;
-    roomDescription: string;
-    movement: string;
-    speech: string;
-    combat: string;
-    death: string;
-    item: string;
-    ambient: string;
-    system: string;
-  };
+  readonly textColor: string;
+  readonly accentColor: string;
 }
 
 // Type guards
@@ -172,33 +151,7 @@ function isInventoryOutput(data: unknown): data is InventoryOutput {
   );
 }
 
-function EventLine({ event, structuredData, colors }: EventLineProps): JSX.Element {
-  const getEventColor = (): string => {
-    switch (event.type) {
-      case 'room_description':
-        return colors.roomDescription;
-      case 'movement':
-      case 'player_entered':
-      case 'player_left':
-        return colors.movement;
-      case 'speech':
-      case 'shout':
-        return colors.speech;
-      case 'ambient':
-        return colors.ambient;
-      case 'combat_hit':
-      case 'combat_start':
-        return colors.combat;
-      case 'death':
-        return colors.death;
-      case 'item_pickup':
-      case 'item_drop':
-        return colors.item;
-      default:
-        return colors.system;
-    }
-  };
-
+function EventLine({ event, structuredData, textColor, accentColor }: EventLineProps): JSX.Element {
   // Route to structured renderers
   if (
     structuredData &&
@@ -212,7 +165,9 @@ function EventLine({ event, structuredData, colors }: EventLineProps): JSX.Eleme
       'data' in structuredData &&
       isRoomOutput(structuredData)
     ) {
-      return <RoomEvent roomData={structuredData.data} colors={colors} />;
+      return (
+        <RoomEvent roomData={structuredData.data} textColor={textColor} accentColor={accentColor} />
+      );
     }
 
     // Inventory output
@@ -221,45 +176,38 @@ function EventLine({ event, structuredData, colors }: EventLineProps): JSX.Eleme
       'data' in structuredData &&
       isInventoryOutput(structuredData)
     ) {
-      return (
-        <InventoryEvent
-          items={structuredData.data.items}
-          color={getEventColor()}
-          ambientColor={colors.ambient}
-        />
-      );
+      return <InventoryEvent items={structuredData.data.items} textColor={textColor} />;
     }
   }
 
   // Route to appropriate event component
   const content = event.content || '';
-  const color = getEventColor();
 
   switch (event.type) {
     case 'speech':
     case 'shout':
-      return <SpeechEvent content={content} color={color} />;
+      return <SpeechEvent content={content} color={textColor} />;
 
     case 'movement':
     case 'player_entered':
     case 'player_left':
-      return <MovementEvent content={content} color={color} />;
+      return <MovementEvent content={content} color={textColor} />;
 
     case 'combat_hit':
     case 'combat_start':
-      return <CombatEvent content={content} color={color} />;
+      return <CombatEvent content={content} color={accentColor} />;
 
     case 'death':
-      return <DeathEvent content={content} color={color} />;
+      return <DeathEvent content={content} color={accentColor} />;
 
     case 'item_pickup':
     case 'item_drop':
-      return <ItemEvent content={content} color={color} />;
+      return <ItemEvent content={content} color={textColor} />;
 
     case 'ambient':
-      return <SystemEvent content={content} color={color} isAmbient={true} />;
+      return <SystemEvent content={content} color={textColor} isAmbient={true} />;
 
     default:
-      return <SystemEvent content={content} color={color} />;
+      return <SystemEvent content={content} color={textColor} />;
   }
 }

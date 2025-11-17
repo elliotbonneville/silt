@@ -195,7 +195,7 @@ const generator = new OpenApiGeneratorV31(registry.definitions);
 const docs = generator.generateDocument({
   openapi: '3.1.0',
   info: {
-    title: 'Silt MUD API',
+    title: 'Silt API',
     version: '1.0.0',
     description: 'REST API for character and account management',
   },

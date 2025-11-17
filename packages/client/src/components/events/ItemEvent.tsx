@@ -11,8 +11,10 @@ interface ItemEventProps {
 
 export function ItemEvent({ content, color }: ItemEventProps): JSX.Element {
   return (
-    <div className="item-event" style={{ color }}>
-      {content}
+    <div className="event-container">
+      <div className="item-event" style={{ color }}>
+        {content}
+      </div>
     </div>
   );
 }

@@ -55,7 +55,7 @@ We're building a **living, multiplayer world** with AI agents, real-time combat,
 
 ### FORBIDDEN
 ❌ `any` type → use `unknown` and narrow  
-❌ `as` casting → use type guards  
+❌ `as` casting → use Zod or type guards instead
 ❌ `@ts-ignore` / `@ts-expect-error`  
 ❌ `!` non-null assertion  
 ❌ Type assertions `<Type>value`  

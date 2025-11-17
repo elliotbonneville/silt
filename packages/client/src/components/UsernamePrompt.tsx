@@ -20,7 +20,7 @@ export function UsernamePrompt({ onUsernameSubmitted }: UsernamePromptProps): JS
   return (
     <div className="flex h-screen items-center justify-center bg-gray-900">
       <div className="w-full max-w-md rounded-lg border border-gray-700 bg-gray-800 p-8">
-        <h1 className="mb-6 text-center text-3xl font-bold text-green-400">Silt MUD</h1>
+        <h1 className="mb-6 text-center text-3xl font-bold text-green-400">Silt</h1>
         <p className="mb-6 text-center text-sm text-gray-400">
           A text-based multiplayer adventure with AI companions
         </p>

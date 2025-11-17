@@ -114,7 +114,7 @@ async function startServer(): Promise<void> {
     setupAdminRoutes(app);
 
     httpServer.listen(PORT, () => {
-      console.info(`🎮 Silt MUD Server running on port ${PORT}`);
+      console.info(`🎮 Silt Server running on port ${PORT}`);
       console.info('📡 WebSocket server ready');
       console.info('🌐 REST API: /api/accounts/:username/characters');
       console.info('🔧 Admin API: /admin/ai-logs');

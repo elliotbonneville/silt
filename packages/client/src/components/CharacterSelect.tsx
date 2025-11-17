@@ -77,7 +77,7 @@ export function CharacterSelect({
   return (
     <div className="flex h-screen items-center justify-center bg-gray-900 p-4">
       <div className="w-full max-w-2xl rounded-lg border border-gray-700 bg-gray-800 p-8">
-        <h1 className="mb-6 text-center text-3xl font-bold text-green-400">Silt MUD</h1>
+        <h1 className="mb-6 text-center text-3xl font-bold text-green-400">Silt</h1>
         <h2 className="mb-6 text-center text-xl text-gray-300">Select Character</h2>
 
         {/* Error message */}

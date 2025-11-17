@@ -11,8 +11,10 @@ interface MovementEventProps {
 
 export function MovementEvent({ content, color }: MovementEventProps): JSX.Element {
   return (
-    <div className="movement-event" style={{ color }}>
-      {content}
+    <div className="event-container">
+      <div className="movement-event" style={{ color }}>
+        {content}
+      </div>
     </div>
   );
 }
