@@ -7,12 +7,22 @@ import { type KeyboardEvent, useState } from 'react';
 interface CommandInputProps {
   onCommand: (command: string) => void;
   disabled?: boolean;
+  lineWidth?: number;
+  fontSize?: number;
+  contentWidth?: number | undefined;
 }
 
-export function CommandInput({ onCommand, disabled }: CommandInputProps): JSX.Element {
+export function CommandInput({
+  onCommand,
+  disabled,
+  lineWidth = 80,
+  fontSize = 14,
+  contentWidth,
+}: CommandInputProps): JSX.Element {
   const [input, setInput] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isFocused, setIsFocused] = useState(false);
 
   const handleSubmit = (): void => {
     if (!input.trim() || disabled) return;
@@ -55,19 +65,33 @@ export function CommandInput({ onCommand, disabled }: CommandInputProps): JSX.El
   };
 
   return (
-    <div className="border-t border-gray-700 bg-gray-800 p-4">
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-green-400">&gt;</span>
+    <div className="fixed bottom-0 left-0 right-0 flex justify-center pointer-events-none">
+      <div
+        className={`pointer-events-auto flex items-center gap-3 rounded-t-xl border-l-2 border-r-2 border-t-2 bg-gray-800 px-6 py-4 shadow-2xl backdrop-blur-sm transition-all duration-200 ${
+          isFocused ? 'border-green-600' : 'border-gray-600 hover:border-gray-500'
+        }`}
+        style={{
+          width: contentWidth ? `${contentWidth}px` : `${lineWidth}ch`,
+          maxWidth: '100%',
+          fontSize: `${fontSize}px`,
+          background: 'linear-gradient(to bottom, rgba(31, 41, 55, 0.95), rgba(31, 41, 55, 1))',
+        }}
+      >
+        <span className="font-mono text-green-400 opacity-80">&gt;</span>
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
+          // biome-ignore lint/a11y/noAutofocus: We want to autofocus the input
+          autoFocus
           placeholder={
             disabled ? 'Connecting...' : 'Enter command (try: look, go north, say hello)'
           }
-          className="flex-1 bg-gray-900 px-3 py-2 font-mono text-sm text-green-400 outline-none placeholder:text-gray-600 disabled:opacity-50"
+          className="flex-1 bg-transparent font-mono text-green-400 outline-none placeholder:text-gray-500 disabled:opacity-50 transition-colors duration-200"
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
         />
       </div>
     </div>

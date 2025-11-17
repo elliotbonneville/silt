@@ -49,7 +49,7 @@ export function useSocket(): UseSocketReturn {
       // Convert structured output to synthetic event with structured data attached
       const outputEvent: GameEventWithData = {
         id: `output-${Date.now()}`,
-        type: 'system',
+        type: output.type === 'room' ? 'room_description' : 'system',
         timestamp: Date.now(),
         originRoomId: '',
         content: output.text,

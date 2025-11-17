@@ -20,6 +20,7 @@ export default function GameRoute(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [preferences, setPreferences] = useState<FormattingPreferences | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [contentWidth, setContentWidth] = useState<number | undefined>(undefined);
 
   // Load preferences from username in localStorage
   useEffect(() => {
@@ -145,10 +146,17 @@ export default function GameRoute(): JSX.Element {
         events={events}
         currentCharacterId={character.id}
         preferences={preferences ?? undefined}
+        onContentWidthChange={setContentWidth}
       />
 
-      {/* Command input */}
-      <CommandInput onCommand={handleCommand} disabled={!character} />
+      {/* Command input - fixed at bottom */}
+      <CommandInput
+        onCommand={handleCommand}
+        disabled={!character}
+        lineWidth={preferences?.lineWidth ?? 80}
+        fontSize={preferences?.fontSize ?? 14}
+        contentWidth={contentWidth}
+      />
 
       {/* Settings modal */}
       {preferences && (

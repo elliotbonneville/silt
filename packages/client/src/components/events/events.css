@@ -1,0 +1,90 @@
+/**
+ * Event component styles - structured visual rhythm
+ * Uses spacing, weight, and opacity for hierarchy instead of size changes
+ */
+
+/* Room Events */
+.room-event {
+  margin-bottom: 1rem;
+}
+
+.room-event__name {
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  margin-bottom: 0.75rem;
+}
+
+.room-event__description {
+  opacity: 0.9;
+  margin-bottom: 1rem;
+  line-height: 1.6;
+}
+
+.room-event__section {
+  margin-bottom: 0.75rem;
+}
+
+.room-event__label {
+  font-weight: 600;
+  opacity: 0.95;
+}
+
+.room-event__list {
+  margin-left: 1rem;
+  opacity: 0.85;
+}
+
+.room-event__list-item {
+  margin-bottom: 0.125rem;
+}
+
+/* Speech Events */
+.speech-event {
+  line-height: 1.5;
+}
+
+/* Movement Events */
+.movement-event {
+  opacity: 0.8;
+  font-style: normal;
+}
+
+/* Combat Events */
+.combat-event {
+  font-weight: 500;
+}
+
+/* Death Events */
+.death-event {
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  border-left-width: 4px;
+  font-weight: 700;
+}
+
+/* Item Events */
+.item-event {
+  /* Default styling */
+}
+
+/* Inventory Events */
+.inventory-event__title {
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.inventory-event__item {
+  opacity: 0.85;
+}
+
+/* System/Ambient Events */
+.system-event {
+  /* Default styling */
+}
+
+.ambient-event {
+  opacity: 0.7;
+}
+

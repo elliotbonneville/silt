@@ -2,22 +2,35 @@
  * Game terminal - displays game events in terminal-style interface
  */
 
-import type { FormattingPreferences, GameEvent } from '@silt/shared';
+import type { FormattingPreferences, GameEvent, InventoryOutput, RoomOutput } from '@silt/shared';
 import { FONT_FAMILIES, THEME_PRESETS } from '@silt/shared';
 import { useEffect, useRef } from 'react';
+import {
+  CombatEvent,
+  DeathEvent,
+  InventoryEvent,
+  ItemEvent,
+  MovementEvent,
+  RoomEvent,
+  SpeechEvent,
+  SystemEvent,
+} from './events/index.js';
 
 interface GameTerminalProps {
   events: readonly GameEvent[];
   currentCharacterId?: string;
   preferences?: FormattingPreferences | undefined;
+  onContentWidthChange?: (width: number) => void;
 }
 
 export function GameTerminal({
   events,
   currentCharacterId,
   preferences,
+  onContentWidthChange,
 }: GameTerminalProps): JSX.Element {
   const terminalRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Get theme colors, with fallback to classic
   const theme = preferences ? THEME_PRESETS[preferences.themePreset] : THEME_PRESETS.classic;
@@ -45,32 +58,77 @@ export function GameTerminal({
     }
   }, [events]);
 
+  // Measure and report content width changes
+  useEffect(() => {
+    if (!contentRef.current || !onContentWidthChange) return;
+
+    const measureWidth = (): void => {
+      if (contentRef.current) {
+        const width = contentRef.current.offsetWidth;
+        onContentWidthChange(width);
+      }
+    };
+
+    // Measure immediately
+    measureWidth();
+
+    // Measure on window resize
+    window.addEventListener('resize', measureWidth);
+    return () => window.removeEventListener('resize', measureWidth);
+  }, [onContentWidthChange]);
+
   return (
     <div
       ref={terminalRef}
-      className="flex-1 overflow-y-auto p-4"
+      className="flex-1 overflow-y-auto p-6 pb-28"
       style={{
         backgroundColor: colors.background,
         color: colors.text,
         fontFamily,
         fontSize: `${fontSize}px`,
+        lineHeight: '1.6',
       }}
     >
-      <div style={{ maxWidth: `${lineWidth}ch`, margin: '0 auto' }}>
+      <div ref={contentRef} style={{ maxWidth: `${lineWidth}ch`, margin: '0 auto' }}>
         {events.length === 0 && (
-          <div style={{ color: colors.ambient }}>Connecting to game server...</div>
+          <div style={{ color: colors.ambient, opacity: 0.7 }}>Connecting to game server...</div>
         )}
 
-        {events.map((event) => (
-          <div key={event.id} className="mb-2">
-            <EventLine
-              event={event}
-              currentCharacterId={currentCharacterId}
-              structuredData={'structuredData' in event ? event.structuredData : undefined}
-              colors={colors}
-            />
-          </div>
-        ))}
+        {events.map((event, index) => {
+          // Skip player_entered events for the current player
+          if (
+            event.type === 'player_entered' &&
+            event.data &&
+            typeof event.data === 'object' &&
+            'actorId' in event.data &&
+            event.data['actorId'] === currentCharacterId
+          ) {
+            return null;
+          }
+
+          const prevEvent = index > 0 ? events[index - 1] : null;
+          const needsExtraSpace =
+            prevEvent &&
+            (event.type === 'room_description' ||
+              prevEvent.type === 'room_description' ||
+              event.type === 'speech' ||
+              event.type === 'shout');
+
+          return (
+            <div
+              key={event.id}
+              className={needsExtraSpace ? 'mt-4 mb-1' : 'mb-1'}
+              style={{ opacity: event.type === 'ambient' ? 0.7 : 1 }}
+            >
+              <EventLine
+                event={event}
+                currentCharacterId={currentCharacterId}
+                structuredData={'structuredData' in event ? event.structuredData : undefined}
+                colors={colors}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -91,6 +149,27 @@ interface EventLineProps {
     ambient: string;
     system: string;
   };
+}
+
+// Type guards
+function isRoomOutput(data: unknown): data is RoomOutput {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'type' in data &&
+    data.type === 'room' &&
+    'data' in data
+  );
+}
+
+function isInventoryOutput(data: unknown): data is InventoryOutput {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'type' in data &&
+    data.type === 'inventory' &&
+    'data' in data
+  );
 }
 
 function EventLine({ event, structuredData, colors }: EventLineProps): JSX.Element {
@@ -120,69 +199,67 @@ function EventLine({ event, structuredData, colors }: EventLineProps): JSX.Eleme
     }
   };
 
-  // Check if this is structured inventory output
+  // Route to structured renderers
   if (
     structuredData &&
     typeof structuredData === 'object' &&
     structuredData !== null &&
-    'type' in structuredData &&
-    'data' in structuredData
+    'type' in structuredData
   ) {
-    const output = structuredData;
-
+    // Room output
     if (
-      output.type === 'inventory' &&
-      output.data &&
-      typeof output.data === 'object' &&
-      output.data !== null &&
-      'items' in output.data &&
-      Array.isArray(output.data.items)
+      structuredData.type === 'room' &&
+      'data' in structuredData &&
+      isRoomOutput(structuredData)
     ) {
-      const items = output.data.items;
+      return <RoomEvent roomData={structuredData.data} colors={colors} />;
+    }
 
-      if (items.length === 0) {
-        return <div style={{ color: colors.ambient }}>Inventory is empty.</div>;
-      }
-
+    // Inventory output
+    if (
+      structuredData.type === 'inventory' &&
+      'data' in structuredData &&
+      isInventoryOutput(structuredData)
+    ) {
       return (
-        <div style={{ color: getEventColor() }}>
-          <div className="font-bold mb-1">Inventory:</div>
-          {items.map((item: { id: string; name: string; isEquipped: boolean }) => (
-            <div key={item.id} style={{ color: colors.ambient }}>
-              - {item.name}
-              {item.isEquipped ? ' (equipped)' : ''}
-            </div>
-          ))}
-        </div>
+        <InventoryEvent
+          items={structuredData.data.items}
+          color={getEventColor()}
+          ambientColor={colors.ambient}
+        />
       );
     }
   }
 
-  // Content is already formatted by the server
+  // Route to appropriate event component
   const content = event.content || '';
-
-  // Split multi-line content into separate lines
-  const lines = content.split('\n') || [];
-
   const color = getEventColor();
 
-  // For room descriptions, make the first line (room name) bold
-  if (event.type === 'room_description' && lines.length > 0) {
-    return (
-      <div style={{ color }}>
-        <div className="font-bold">{lines[0]}</div>
-        {lines.slice(1).map((line, idx) => (
-          <div key={`${event.id}-${idx + 1}`}>{line || '\u00A0'}</div>
-        ))}
-      </div>
-    );
-  }
+  switch (event.type) {
+    case 'speech':
+    case 'shout':
+      return <SpeechEvent content={content} color={color} />;
 
-  return (
-    <div style={{ color }}>
-      {lines.map((line, idx) => (
-        <div key={`${event.id}-${idx}`}>{line || '\u00A0'}</div>
-      ))}
-    </div>
-  );
+    case 'movement':
+    case 'player_entered':
+    case 'player_left':
+      return <MovementEvent content={content} color={color} />;
+
+    case 'combat_hit':
+    case 'combat_start':
+      return <CombatEvent content={content} color={color} />;
+
+    case 'death':
+      return <DeathEvent content={content} color={color} />;
+
+    case 'item_pickup':
+    case 'item_drop':
+      return <ItemEvent content={content} color={color} />;
+
+    case 'ambient':
+      return <SystemEvent content={content} color={color} isAmbient={true} />;
+
+    default:
+      return <SystemEvent content={content} color={color} />;
+  }
 }
