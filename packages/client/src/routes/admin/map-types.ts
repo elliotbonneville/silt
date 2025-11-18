@@ -13,6 +13,8 @@ export interface RoomData {
     id: string;
     name: string;
     isNpc: boolean;
+    isAIAgent: boolean;
+    agentId: string | null;
     hp: number;
     maxHp: number;
   }>;

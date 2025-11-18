@@ -4,6 +4,9 @@
 
 import type { AdminGameEvent } from '@silt/shared';
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useAdminSocketContext } from '../../contexts/AdminSocketContext.js';
 
 const serverUrl = import.meta.env.VITE_SERVER_URL;
@@ -165,7 +168,18 @@ export function AdminEvents(): JSX.Element {
 
 function EventCard({ event }: { event: AdminGameEvent }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   const time = new Date(event.timestamp).toLocaleTimeString();
+
+  async function copyToClipboard(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(event, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
+  }
 
   const eventTypeColors: Record<string, string> = {
     speech: 'text-green-400',
@@ -195,42 +209,73 @@ function EventCard({ event }: { event: AdminGameEvent }): JSX.Element {
     : { text: 'GAME', color: 'bg-gray-900 text-gray-300' };
 
   return (
-    <div className="rounded border border-gray-700 bg-gray-800 p-3 font-mono text-sm">
-      <button
-        type="button"
-        className="flex w-full cursor-pointer items-center justify-between text-left"
-        onClick={() => setExpanded(!expanded)}
+    <div className="rounded border border-gray-700 bg-gray-800 hover:border-cyan-500 transition-colors">
+      <Link
+        to={`/admin/events/${event.id}`}
+        className="block p-3 font-mono text-sm"
+        onClick={(e) => {
+          // Don't navigate if clicking expand or copy buttons
+          if (e.target instanceof HTMLElement && e.target.closest('button')) {
+            e.preventDefault();
+          }
+        }}
       >
-        <div className="flex items-center gap-3">
-          <span className="rounded bg-gray-900 px-2 py-0.5 text-gray-500 text-xs">{time}</span>
-          <span className={`rounded px-2 py-0.5 text-xs ${badge.color}`}>{badge.text}</span>
-          <span className={`font-semibold ${eventTypeColor}`}>{event.type}</span>
-          {isAIEvent &&
-            event.data &&
-            typeof event.data === 'object' &&
-            'agentName' in event.data &&
-            typeof event.data['agentName'] === 'string' && (
-              <span className="text-yellow-300">{event.data['agentName']}</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <span className="rounded bg-gray-900 px-2 py-0.5 text-gray-500 text-xs">{time}</span>
+            <span className={`rounded px-2 py-0.5 text-xs ${badge.color}`}>{badge.text}</span>
+            <span className={`font-semibold ${eventTypeColor}`}>{event.type}</span>
+            {isAIEvent &&
+              event.data &&
+              typeof event.data === 'object' &&
+              'agentName' in event.data &&
+              typeof event.data['agentName'] === 'string' && (
+                <span className="text-yellow-300">{event.data['agentName']}</span>
+              )}
+            {event.content && (
+              <span className="text-gray-300 text-xs truncate max-w-md">{event.content}</span>
             )}
-          {isAIEvent &&
-            event.data &&
-            typeof event.data === 'object' &&
-            'reasoning' in event.data &&
-            typeof event.data['reasoning'] === 'string' && (
-              <span className="text-gray-400 text-xs italic max-w-md truncate">
-                {event.data['reasoning']}
-              </span>
+            {!isAIEvent && event.recipients && (
+              <span className="text-gray-400 text-xs">→ {event.recipients.length} recipients</span>
             )}
-          {!isAIEvent && event.recipients && (
-            <span className="text-gray-400 text-xs">→ {event.recipients.length} recipients</span>
-          )}
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              setExpanded(!expanded);
+            }}
+            className="text-gray-400 hover:text-white px-2"
+          >
+            {expanded ? '▼' : '▶'}
+          </button>
         </div>
-        <span className="text-gray-400">{expanded ? '▼' : '▶'}</span>
-      </button>
+      </Link>
       {expanded && (
-        <pre className="mt-2 overflow-x-auto text-xs text-gray-300">
-          {JSON.stringify(event, null, 2)}
-        </pre>
+        <div className="px-3 pb-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-500">Raw Event Data</span>
+            <button
+              type="button"
+              onClick={copyToClipboard}
+              className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition-colors"
+            >
+              {copied ? '✓ Copied!' : '📋 Copy'}
+            </button>
+          </div>
+          <SyntaxHighlighter
+            language="json"
+            style={vscDarkPlus}
+            customStyle={{
+              margin: 0,
+              borderRadius: '0.375rem',
+              fontSize: '0.75rem',
+              border: '1px solid rgb(55, 65, 81)',
+            }}
+          >
+            {JSON.stringify(event, null, 2)}
+          </SyntaxHighlighter>
+        </div>
       )}
     </div>
   );

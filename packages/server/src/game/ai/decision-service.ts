@@ -9,59 +9,103 @@ import type { AIAction, AIDecision, RelationshipData } from './types.js';
 import { AIDecisionSchema } from './types.js';
 
 /**
- * Decide what action AI should take (for proactive behavior)
+ * Decide what action AI should take (returns action + debug info)
  */
 export async function decideAction(
   client: OpenAI,
   agentPersonality: string,
   agentName: string,
-  recentEvents: string[],
+  eventLog: Array<{ timestamp: number; content: string; type: 'event' | 'output' }>,
   relationships: Map<string, RelationshipData>,
   timeSinceLastAction: number,
   roomContext: string,
-): Promise<AIAction | null> {
+  spatialMemory?: string,
+): Promise<{ action: AIAction | null; prompt: string; response: string }> {
   const tools = generateOpenAIFunctionSchemas();
 
   const relContext = Array.from(relationships.entries())
     .map(([name, rel]) => `- ${name}: familiarity ${rel.familiarity}, trust ${rel.trust}/10`)
     .join('\n');
 
+  const spatialContext = spatialMemory
+    ? `\n---\n\nYOUR MENTAL MAP (paths from your home - use for navigation planning):\n${spatialMemory}\n\nIMPORTANT: This map shows paths FROM YOUR HOME. You may not be at home right now.\nFor IMMEDIATE movement, use the "Adjacent rooms" list in CURRENT SITUATION above.\n---\n`
+    : '';
+
   const prompt = `You are ${agentName}. ${agentPersonality}
 
-Recent events you witnessed:
-${recentEvents.map((e, i) => `${i + 1}. ${e}`).join('\n')}
+CURRENT SITUATION (right now):
+${roomContext}${spatialContext}
+
+EVENT LOG (last 90 seconds - includes your own actions):
+${
+  eventLog.length > 0
+    ? eventLog
+        .map((e) => {
+          const time = new Date(e.timestamp).toLocaleTimeString();
+          return `[${time}] ${e.content}`;
+        })
+        .join('\n')
+    : '(No recent events)'
+}
 
 Relationships:
 ${relContext || 'No relationships yet'}
 
 Last acted: ${timeSinceLastAction} seconds ago
-Room: ${roomContext}
+
+DECISION GUIDELINES:
+1. Read CURRENT SITUATION to see where you are RIGHT NOW and who is present
+2. To move, use ONLY the directions in "Adjacent rooms" (not the mental map)
+3. Read EVENT LOG to understand what happened (including what YOU already did)
+4. Decide your NEXT action based on current state, not past events
+
+IMPORTANT - When to ACT:
+- When directly addressed by name
+- When your personality/role demands it (hostile NPCs attack intruders, guards protect areas, etc.)
+- When dramatic events occur that you should respond to
+- When it serves your character's goals
+
+IMPORTANT - When to WAIT (do nothing):
+- When nothing significant is happening  
+- When people are having private conversations not involving you
+- When you have nothing meaningful to contribute
+- When observing and waiting is more in-character
+
+IMPORTANT - For HOSTILE agents:
+- Ignore "avoid spam" if enemies are present - attack repeatedly
+- Ignore "wait" guidelines if your personality demands action
+- Prioritize combat/territorial responses over politeness
 
 Available actions: ${tools.map((t) => t.function.name).join(', ')}
 
-Decide what to do. You can:
-- Attack threats
-- Pick up useful items  
-- Move around (stay near your home)
-- Say something
-- Do nothing (wait and observe)
-
-Consider your personality and the situation. Don't spam actions.`;
+To MOVE: Use ONLY directions from "Adjacent rooms" in CURRENT SITUATION (not your mental map).`;
 
   const response = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: 'o4-mini',
     messages: [{ role: 'user', content: prompt }],
     tools,
     tool_choice: 'auto',
-    max_tokens: 150,
-    temperature: 0.8,
+    max_completion_tokens: 500,
   });
 
   const message = response.choices[0]?.message;
   const toolCall = message?.tool_calls?.[0];
 
+  // Capture any reasoning from the message content
+  const llmReasoning = message?.content || '';
+
+  // Format response for logging
+  const responseText =
+    toolCall && toolCall.type === 'function'
+      ? `Tool: ${toolCall.function.name}, Args: ${toolCall.function.arguments}, Reasoning: ${llmReasoning}`
+      : `No action. Reasoning: ${llmReasoning}`;
+
   if (!toolCall || toolCall.type !== 'function') {
-    return null; // AI chose to do nothing
+    return {
+      action: null,
+      prompt,
+      response: responseText,
+    };
   }
 
   try {
@@ -73,7 +117,11 @@ Consider your personality and the situation. Don't spam actions.`;
 
     if (!result.success) {
       console.error('Failed to parse AI action arguments:', result.error);
-      return null;
+      return {
+        action: null,
+        prompt,
+        response: `Parse error: ${result.error}`,
+      };
     }
 
     // Format arguments for display
@@ -81,17 +129,25 @@ Consider your personality and the situation. Don't spam actions.`;
       .map(([key, value]) => `${key}: ${String(value)}`)
       .join(', ');
 
-    const reasoning = argSummary
-      ? `${toolCall.function.name}(${argSummary})`
-      : toolCall.function.name;
+    const reasoning =
+      llmReasoning ||
+      (argSummary ? `${toolCall.function.name}(${argSummary})` : toolCall.function.name);
 
     return {
-      action: toolCall.function.name,
-      arguments: result.data,
-      reasoning,
+      action: {
+        action: toolCall.function.name,
+        arguments: result.data,
+        reasoning,
+      },
+      prompt,
+      response: responseText,
     };
   } catch {
-    return null;
+    return {
+      action: null,
+      prompt,
+      response: 'Exception parsing response',
+    };
   }
 }
 

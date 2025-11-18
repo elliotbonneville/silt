@@ -36,7 +36,7 @@ describe('formatEventContent - movement events', () => {
       expect(result).toBe('You move north.');
     });
 
-    it('should show empty message in destination room', () => {
+    it('should NOT show arrival message in destination room (output shows room description)', () => {
       const event = createMovementEvent('player1', 'Alice', 'room1', 'room2', 'north');
       const result = formatEventContent(event, 'player1', 'room2');
       expect(result).toBe('');

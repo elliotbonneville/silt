@@ -11,6 +11,8 @@ import {
   findCharactersInRoom,
   updateCharacter,
 } from '../database/character-repository.js';
+import { getGameState, updateGameState } from '../database/game-state-repository.js';
+import { createPlayerLog } from '../database/player-log-repository.js';
 import { findRoomById } from '../database/room-repository.js';
 import type { AIAction } from './ai/index.js';
 import { AIService } from './ai/index.js';
@@ -30,6 +32,7 @@ export class GameEngine {
   private commandHandler!: CommandHandler;
   private connectionHandler!: ConnectionHandler;
   private initialized = false;
+  private paused = false;
 
   constructor(private readonly io: Server) {
     this.characterManager = new CharacterManager(this.io);
@@ -57,6 +60,13 @@ export class GameEngine {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
+    // Load game state (pause status, etc.)
+    const gameState = await getGameState();
+    this.paused = gameState.isPaused;
+    if (this.paused) {
+      console.info('⏸️  Game engine starting in PAUSED state');
+    }
+
     // Load AI agents
     const aiAgents = await this.aiAgentManager.loadAgents();
     console.info(`✅ Loaded ${aiAgents.length} AI agents`);
@@ -79,8 +89,15 @@ export class GameEngine {
     // Set up admin socket handlers
     this.setupAdminHandlers();
 
-    // Start AI proactive behavior loop
-    this.aiAgentManager.startProactiveLoop();
+    // Start AI proactive behavior loop (only if not paused)
+    if (!this.paused) {
+      this.aiAgentManager.startProactiveLoop();
+    }
+
+    // Initialize spatial memory in background (don't block startup)
+    this.aiAgentManager
+      .initializeSpatialMemory()
+      .catch((error) => console.error('Failed to initialize spatial memory:', error));
 
     this.initialized = true;
   }
@@ -145,16 +162,23 @@ export class GameEngine {
       character,
     };
 
+    // Persist command
+    await createPlayerLog(character.id, 'command', commandText);
+
     const result = await parseAndExecuteCommand(commandText, context);
 
     if (!result.success && result.error) {
       this.io.to(socketId).emit('game:error', { message: result.error });
+      // Persist error
+      await createPlayerLog(character.id, 'output', { type: 'error', message: result.error });
       return;
     }
 
     // Send structured output to command issuer (look, inventory, etc.)
     if (result.output) {
       this.io.to(socketId).emit('game:output', result.output);
+      // Persist output
+      await createPlayerLog(character.id, 'output', result.output);
     }
 
     // Handle movement - persist character position to database
@@ -232,6 +256,11 @@ export class GameEngine {
 
     const result = await parseAndExecuteCommand(commandString, context);
 
+    // Queue output for AI agent (so they see room descriptions, inventory, etc.)
+    if (result.output) {
+      this.aiAgentManager.queueOutputForAgent(character.id, result.output);
+    }
+
     // Handle movement - persist character position to database
     const moveEvent = result.events.find((e) => e.type === 'movement');
     if (moveEvent?.data && this.isMovementData(moveEvent.data)) {
@@ -239,5 +268,36 @@ export class GameEngine {
     }
 
     await this.commandHandler.processResults(result, character);
+  }
+
+  /**
+   * Pause the game engine (stops AI proactive loop)
+   */
+  async pause(): Promise<void> {
+    if (!this.paused) {
+      this.paused = true;
+      this.aiAgentManager.pauseProactiveLoop();
+      await updateGameState({ isPaused: true });
+      console.info('⏸️  Game engine paused');
+    }
+  }
+
+  /**
+   * Resume the game engine (restarts AI proactive loop)
+   */
+  async resume(): Promise<void> {
+    if (this.paused) {
+      this.paused = false;
+      this.aiAgentManager.resumeProactiveLoop();
+      await updateGameState({ isPaused: false });
+      console.info('▶️  Game engine resumed');
+    }
+  }
+
+  /**
+   * Get current pause state
+   */
+  isPaused(): boolean {
+    return this.paused;
   }
 }

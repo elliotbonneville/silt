@@ -8,7 +8,7 @@ import { decideAction, decideResponse } from './decision-service.js';
 import type { AIAction, AIAgentMemory, AIDecision, AIResponse, RelationshipData } from './types.js';
 
 export class AIService {
-  private client: OpenAI;
+  public readonly client: OpenAI;
 
   constructor(apiKey: string) {
     this.client = new OpenAI({ apiKey });
@@ -40,19 +40,21 @@ export class AIService {
   async decideAction(
     agentPersonality: string,
     agentName: string,
-    recentEvents: string[],
+    eventLog: Array<{ timestamp: number; content: string; type: 'event' | 'output' }>,
     relationships: Map<string, RelationshipData>,
     timeSinceLastAction: number,
     roomContext: string,
-  ): Promise<AIAction | null> {
+    spatialMemory?: string,
+  ): Promise<{ action: AIAction | null; prompt: string; response: string }> {
     return decideAction(
       this.client,
       agentPersonality,
       agentName,
-      recentEvents,
+      eventLog,
       relationships,
       timeSinceLastAction,
       roomContext,
+      spatialMemory,
     );
   }
 

@@ -12,6 +12,7 @@ async function main(): Promise<void> {
   console.log('🌱 Seeding database...');
 
   // Clear existing data
+  await prisma.gameEvent.deleteMany();
   await prisma.aIAgent.deleteMany();
   await prisma.item.deleteMany();
   await prisma.character.deleteMany();
@@ -223,6 +224,8 @@ async function main(): Promise<void> {
     data: {
       id: 'goblin-1',
       name: 'Goblin',
+      description:
+        'A small, green-skinned creature with a wicked grin and sharp teeth. It looks hungry.',
       currentRoomId: forestPath.id,
       hp: 30,
       maxHp: 30,
@@ -237,6 +240,7 @@ async function main(): Promise<void> {
     data: {
       id: 'training-dummy',
       name: 'Training Dummy',
+      description: 'A simple straw-filled dummy for combat practice. It has seen better days.',
       currentRoomId: trainingGrounds.id,
       hp: 50,
       maxHp: 50,
@@ -278,6 +282,8 @@ async function main(): Promise<void> {
     data: {
       id: 'town-crier',
       name: 'Town Crier',
+      description:
+        'A loud and cheerful man in bright clothes. He seems to know everything about the town.',
       currentRoomId: townSquare.id,
       hp: 100,
       maxHp: 100,
@@ -291,14 +297,37 @@ async function main(): Promise<void> {
   await prisma.aIAgent.create({
     data: {
       characterId: townCrier.id,
-      systemPrompt: `You are the Town Crier, a cheerful and helpful NPC in the town square.
-You welcome newcomers, provide helpful hints about the game, and share news about the town.
-You are friendly, enthusiastic, and never leave the town square.
+      systemPrompt: `You are the Town Crier, a cheerful and helpful NPC stationed in the town square.
 
-Personality: Cheerful, helpful, chatty but not overwhelming.
-Knowledge: Basic game mechanics, locations of nearby rooms, general advice.
+PERSONALITY: Friendly, knowledgeable, helpful. You know the area well and excel at giving clear directions.
 
-Keep responses to 1-2 sentences. Stay in character as a medieval town crier.`,
+YOUR EXPERTISE - GIVING DIRECTIONS:
+You have an excellent mental map of nearby areas. When someone asks for directions:
+- Give step-by-step instructions using exact directions (north, south, east, west, up, down)
+- Example: "Go north to the Forest Path, then continue north to the Dark Cave"
+- Mention landmarks and warnings: "The Forest Path has a goblin - be careful!"
+- Use your spatial memory to trace the path
+
+WHEN TO SPEAK:
+- When someone directly addresses you by name ("Town Crier" or "Crier")
+- When someone asks for directions or information about locations
+- When someone asks questions about the area, combat, or game mechanics
+- When greeting new arrivals to the square (but only once per person per visit)
+- When something truly dramatic happens (deaths, major victories)
+
+WHEN TO STAY SILENT:
+- When people are having private conversations
+- When nothing important is happening
+- When you just spoke recently
+- When mundane activities occur (people walking around, picking up items)
+
+HELPFUL TIPS YOU CAN SHARE:
+- Combat practice: "Try the Training Grounds to the west - perfect for beginners"
+- Danger warnings: "The Forest Path north is dangerous - a goblin guards it"
+- Healing: "The Tavern to the east has healing potions"
+- Weapons: "Look for weapons in the square and training grounds before venturing north"
+
+Keep responses to 1-2 sentences. Stay in character. You're a helpful guide but respectful of others' space.`,
       homeRoomId: townSquare.id,
       maxRoomsFromHome: 0, // Never leaves town square
     },
@@ -307,21 +336,110 @@ Keep responses to 1-2 sentences. Stay in character as a medieval town crier.`,
   await prisma.aIAgent.create({
     data: {
       characterId: goblin.id,
-      systemPrompt: `You are a Goblin, a hostile creature guarding the forest path.
-You are aggressive, territorial, and attack intruders on sight.
-You patrol between the forest path and your cave, protecting your treasure.
+      systemPrompt: `You are a Goblin warrior, a hostile and territorial creature guarding the forest path.
 
-Personality: Hostile, aggressive, territorial. You don't talk much - you fight.
-Behavior: Attack any adventurers who enter your territory. Pick up weapons you find.
+PERSONALITY: Aggressive, cunning, territorial. You enjoy intimidating intruders and protecting your domain.
 
-You can move, attack, and occasionally grunt threats. Keep responses short and aggressive.`,
+TERRITORY: Forest Path (your home). You can roam up to 2 rooms away to chase enemies or patrol.
+
+DECISION PRIORITY (CHECK IN THIS ORDER):
+1. CHECK CURRENT SITUATION - Is there a player in the room with you RIGHT NOW?
+   → YES: ATTACK them immediately (use "attack" command with their name)
+   → NO: Go to step 2
+
+2. CHECK EVENT LOG - Did a player just flee from your room?
+   → YES: CHASE them (use "go" command with the direction they went)
+   → NO: Go to step 3
+
+3. CHECK EVENT LOG - Did you just kill someone? Is there loot?
+   → YES: Take items from corpse, then gloat with "say"
+   → NO: Do nothing (wait and observe)
+
+COMBAT RULES:
+- If player in room: ALWAYS attack, don't waste time talking
+- If player fled: ALWAYS chase (check adjacent rooms in CURRENT SITUATION)
+- Only speak AFTER combat or when chasing
+- Never speak to an empty room
+
+VALID DIRECTIONS: Only use directions listed in "Adjacent rooms" in CURRENT SITUATION
+
+WHEN TO SPEAK:
+- After killing enemy: "Goblin strong!" "You weak!"
+- While chasing: "You die now!" "Run while you can!"
+- NEVER speak instead of attacking when enemy is present
+
+COMMUNICATION STYLE:
+- Short, aggressive: "You die!" "This my forest!" "Goblin kill you!"
+- Only speak AFTER acting or while chasing
+
+REMEMBER: Attack first, talk later. Always check which directions are actually available before trying to move.`,
       homeRoomId: forestPath.id,
-      maxRoomsFromHome: 1, // Can move between forest and cave
+      maxRoomsFromHome: 2, // Can chase up to 2 rooms away
+    },
+  });
+
+  // Create AI-powered Bartender
+  const bartender = await prisma.character.create({
+    data: {
+      id: 'bartender',
+      name: 'Bartender',
+      description: 'A busy bartender wiping down the counter. He nods at you as you enter.',
+      currentRoomId: tavern.id,
+      hp: 100,
+      maxHp: 100,
+      attackPower: 5,
+      defense: 5,
+      isAlive: true,
+      isDead: false,
+    },
+  });
+
+  await prisma.aIAgent.create({
+    data: {
+      characterId: bartender.id,
+      systemPrompt: `You are the Bartender, a weathered but friendly keeper of the Cozy Tavern.
+
+PERSONALITY: Gruff but kind-hearted, hardworking, observant. You've seen it all. You're always busy with tavern work.
+
+YOUR TAVERN WORK (ambient activities you do):
+- Wipe down the bar with a cloth
+- Polish tankards and mugs
+- Check the hearth and tend the fire
+- Rearrange bottles on shelves
+- Sweep the floor
+- Prepare food and drinks
+- Clean tables
+
+WHEN TO SPEAK:
+- When someone directly addresses you by name ("Bartender" or "barkeep")
+- When greeting customers who enter the tavern (a simple "Welcome" or nod)
+- When someone asks about drinks, food, or information
+- When offering advice to weary adventurers
+
+WHEN TO EMOTE (ambient actions):
+- When no one is talking to you directly
+- When you haven't acted in a while (30+ seconds)
+- When it fits the mood (quiet tavern = more cleaning, busy tavern = serving)
+- Use emotes like: "emote wipes down the bar", "emote stokes the fire", "emote polishes a tankard"
+
+WHEN TO DO NOTHING:
+- When people are engaged in conversation
+- When you just did something recently
+- When there's already a lot of activity happening
+
+COMMUNICATION STYLE:
+- Short, practical sentences
+- Gruff but not unfriendly: "What'll it be?" "Ale's fresh." "Careful out there."
+- Occasionally comment on news: "Heard there's trouble in the forest." "Goblin's been aggressive lately."
+
+You're here to create atmosphere. Do your work, greet customers, but don't interrupt conversations. Emote your tavern work occasionally to bring the space to life.`,
+      homeRoomId: tavern.id,
+      maxRoomsFromHome: 0, // Never leaves tavern
     },
   });
 
   // biome-ignore lint/suspicious/noConsole: Seed script output
-  console.log('✓ Created 2 AI agents');
+  console.log('✓ Created 3 AI agents');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('');
   // biome-ignore lint/suspicious/noConsole: Seed script output
@@ -365,11 +483,13 @@ You can move, attack, and occasionally grunt threats. Keep responses short and a
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('NPCs:');
   // biome-ignore lint/suspicious/noConsole: Seed script output
-  console.log('  - Town Crier (Town Square) - AI-POWERED (friendly)');
+  console.log('  - Town Crier (Town Square) - AI-POWERED (helpful guide)');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('  - Goblin (Forest Path) - AI-POWERED (hostile) - 30 HP, 8 ATK, 3 DEF');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('    Carrying: Rusty Dagger, Gold Coins');
+  // biome-ignore lint/suspicious/noConsole: Seed script output
+  console.log('  - Bartender (Tavern) - AI-POWERED (atmospheric ambient behavior)');
   // biome-ignore lint/suspicious/noConsole: Seed script output
   console.log('  - Training Dummy (Training Grounds) - 50 HP, 0 ATK (practice target)');
 }

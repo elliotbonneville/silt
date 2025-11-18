@@ -51,6 +51,9 @@ export async function updateAIAgent(
     readonly relationshipsJson?: string;
     readonly conversationJson?: string;
     readonly lastActionAt?: Date;
+    readonly systemPrompt?: string;
+    readonly spatialMemory?: string;
+    readonly spatialMemoryUpdatedAt?: Date;
   },
 ): Promise<AIAgent> {
   return await prisma.aIAgent.update({

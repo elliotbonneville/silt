@@ -8,12 +8,12 @@ import { executeAttackCommand } from './combat-commands.js';
 import {
   executeDropCommand,
   executeEquipCommand,
-  executeExamineCommand,
   executeInventoryCommand,
   executeTakeCommand,
   executeUnequipCommand,
 } from './inventory-commands.js';
 import { executeGoCommand, executeLookCommand } from './navigation-commands.js';
+import { executeExamineCommand } from './observation-commands.js';
 import { executeEmoteCommand, executeSayCommand, executeShoutCommand } from './social-commands.js';
 
 export interface CommandContext {

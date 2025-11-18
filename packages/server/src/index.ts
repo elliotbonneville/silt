@@ -111,7 +111,7 @@ async function startServer(): Promise<void> {
 
     // Setup REST API routes
     setupCharacterRoutes(app, gameEngine.characterManager);
-    setupAdminRoutes(app);
+    setupAdminRoutes(app, gameEngine);
 
     httpServer.listen(PORT, () => {
       console.info(`🎮 Silt Server running on port ${PORT}`);

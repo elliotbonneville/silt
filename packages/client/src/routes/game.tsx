@@ -13,7 +13,7 @@ import { SettingsModal } from '../components/SettingsModal.js';
 import { useSocket } from '../hooks/useSocket.js';
 
 export default function GameRoute(): JSX.Element {
-  const { socket, events, error, isConnected } = useSocket();
+  const { socket, events, error, isConnected, addOptimisticEvent } = useSocket();
   const { characterId } = useParams<{ characterId: string }>();
   const navigate = useNavigate();
   const [character, setCharacter] = useState<CharacterResponse | null>(null);
@@ -102,6 +102,7 @@ export default function GameRoute(): JSX.Element {
 
   const handleCommand = (command: string): void => {
     if (!socket) return;
+    addOptimisticEvent(command);
     socket.emit('game:command', { command });
   };
 

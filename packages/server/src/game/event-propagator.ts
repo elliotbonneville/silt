@@ -8,6 +8,7 @@ import { EVENT_RANGES } from '@silt/shared';
 import type { Server } from 'socket.io';
 import { findCharacterById, findCharactersInRoom } from '../database/character-repository.js';
 import { saveGameEvent } from '../database/event-repository.js';
+import { createPlayerLog } from '../database/player-log-repository.js';
 import type { AIAgentManager } from './ai-agent-manager.js';
 import type { CharacterManager } from './character-manager.js';
 import { getRoomsWithinDistance } from './event-distance.js';
@@ -156,6 +157,14 @@ export class EventPropagator {
       // Filter out empty messages
       if (!formattedEvent.content) continue;
 
+      // Debug: Log if we're sending "Something happened" to players
+      if (formattedEvent.content === 'Something happened.' && character.accountId !== null) {
+        console.warn(
+          `⚠️  Sending generic "Something happened" to player ${character.name} for event type: ${event.type}`,
+          event,
+        );
+      }
+
       if (character.accountId === null) {
         // AI agent - queue event
         this.aiAgentManager.queueEventForAgent(actorId, formattedEvent);
@@ -164,6 +173,10 @@ export class EventPropagator {
         const socketId = this.characterManager.getSocketIdForCharacter(actorId);
         if (socketId && this.io) {
           this.io.to(socketId).emit('game:event', formattedEvent);
+          // Persist event log for player
+          createPlayerLog(actorId, 'event', formattedEvent).catch((error) => {
+            console.error(`Failed to log event for player ${actorId}:`, error);
+          });
         }
       }
     }

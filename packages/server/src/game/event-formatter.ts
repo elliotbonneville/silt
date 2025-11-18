@@ -39,10 +39,28 @@ export function formatEventContent(
     case 'shout': {
       const speaker = data['actorName'];
       const message = data['message'];
+      const shoutOriginRoom = event.originRoomId;
+
       if (typeof speaker !== 'string' || typeof message !== 'string') {
         return event.content || (isOmniscient ? event.type : 'Someone shouts something.');
       }
-      return isYou ? `You shout: "${message}"` : `${speaker} shouts: "${message}"`;
+
+      if (isOmniscient) {
+        return `${speaker} shouts: "${message}"`;
+      }
+
+      if (isYou) {
+        return `You shout: "${message}"`;
+      }
+
+      // Add directional context if viewer is in different room
+      if (viewerRoomId && shoutOriginRoom && viewerRoomId !== shoutOriginRoom) {
+        // TODO: Calculate direction from viewerRoomId to shoutOriginRoom
+        // For now, just indicate it's from elsewhere
+        return `${speaker} shouts from somewhere: "${message}"`;
+      }
+
+      return `${speaker} shouts: "${message}"`;
     }
 
     case 'emote': {

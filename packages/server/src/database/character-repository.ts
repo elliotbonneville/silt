@@ -7,6 +7,7 @@ import { prisma } from './client.js';
 
 export interface CreateCharacterInput {
   readonly name: string;
+  readonly description?: string;
   readonly accountId?: string;
   readonly spawnPointId?: string; // Optional for NPCs
   readonly currentRoomId?: string; // For NPCs placed directly
@@ -17,6 +18,7 @@ export interface CreateCharacterInput {
 }
 
 export interface UpdateCharacterInput {
+  readonly description?: string;
   readonly currentRoomId?: string;
   readonly hp?: number;
   readonly maxHp?: number;
@@ -53,6 +55,7 @@ export async function createCharacter(input: CreateCharacterInput): Promise<Char
 
   const data: {
     name: string;
+    description: string;
     currentRoomId: string;
     spawnPointId?: string;
     hp: number;
@@ -62,6 +65,7 @@ export async function createCharacter(input: CreateCharacterInput): Promise<Char
     accountId?: string;
   } = {
     name: input.name,
+    description: input.description ?? '',
     currentRoomId,
     hp: input.hp ?? 100,
     maxHp: input.maxHp ?? 100,

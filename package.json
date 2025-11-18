@@ -11,6 +11,7 @@
     "dev": "concurrently \"npm run dev -w @silt/server\" \"npm run dev -w @silt/client\"",
     "dev:server": "npm run dev -w @silt/server",
     "dev:client": "npm run dev -w @silt/client",
+    "db:seed": "npm run db:seed -w @silt/server",
     "test:e2e": "cd packages/client && playwright test --reporter=list",
     "test:e2e:ui": "cd packages/client && playwright test --ui",
     "test:e2e:headed": "cd packages/client && playwright test --headed --reporter=list",

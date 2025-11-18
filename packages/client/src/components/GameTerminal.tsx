@@ -152,6 +152,17 @@ function isInventoryOutput(data: unknown): data is InventoryOutput {
 }
 
 function EventLine({ event, structuredData, textColor, accentColor }: EventLineProps): JSX.Element {
+  // Handle optimistic updates (user commands)
+  if (event.id.startsWith('optimistic-')) {
+    // Render user commands in a lighter/different color for distinction
+    // Using a slight opacity/different shade to distinguish from server output but stay readable
+    return (
+      <div className="event-container" style={{ opacity: 0.7, fontStyle: 'italic' }}>
+        <div style={{ color: textColor }}>{event.content}</div>
+      </div>
+    );
+  }
+
   // Route to structured renderers
   if (
     structuredData &&

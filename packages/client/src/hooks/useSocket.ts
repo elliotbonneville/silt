@@ -15,6 +15,7 @@ interface UseSocketReturn {
   isConnected: boolean;
   events: readonly GameEventWithData[];
   error: string | null;
+  addOptimisticEvent: (command: string) => void;
 }
 
 const serverUrl = import.meta.env.VITE_SERVER_URL;
@@ -70,10 +71,24 @@ export function useSocket(): UseSocketReturn {
     };
   }, []);
 
+  const addOptimisticEvent = (command: string) => {
+    const event: GameEventWithData = {
+      id: `optimistic-${Date.now()}`,
+      type: 'system',
+      timestamp: Date.now(),
+      originRoomId: '',
+      content: `> ${command}`,
+      relatedEntities: [],
+      visibility: 'private',
+    };
+    setEvents((prev) => [...prev, event]);
+  };
+
   return {
     socket: socketRef.current,
     isConnected,
     events,
     error,
+    addOptimisticEvent,
   };
 }

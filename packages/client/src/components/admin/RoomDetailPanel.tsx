@@ -4,6 +4,7 @@
 
 import type { AdminGameEvent } from '@silt/shared';
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router';
 
 const serverUrl = import.meta.env.VITE_SERVER_URL;
 const SERVER_URL = serverUrl ?? 'http://localhost:3000';
@@ -19,6 +20,8 @@ interface RoomData {
     id: string;
     name: string;
     isNpc: boolean;
+    isAIAgent: boolean;
+    agentId: string | null;
     hp: number;
     maxHp: number;
   }>;
@@ -109,9 +112,18 @@ export function RoomDetailPanel({
             <div className="space-y-1">
               {room.occupantList.map((char) => (
                 <div key={char.id} className="flex items-center gap-2 text-xs">
-                  <span className="text-yellow-300">
-                    {char.isNpc ? '🤖' : '👤'} {char.name}
-                  </span>
+                  {char.isAIAgent && char.agentId ? (
+                    <Link
+                      to={`/admin/agents/${char.agentId}/overview`}
+                      className="text-cyan-400 hover:text-cyan-300 hover:underline"
+                    >
+                      {char.isNpc ? '🤖' : '👤'} {char.name}
+                    </Link>
+                  ) : (
+                    <span className="text-yellow-300">
+                      {char.isNpc ? '🤖' : '👤'} {char.name}
+                    </span>
+                  )}
                   <span className="text-gray-500">
                     {char.hp}/{char.maxHp} HP
                   </span>

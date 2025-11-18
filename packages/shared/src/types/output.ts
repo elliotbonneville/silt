@@ -64,6 +64,30 @@ export interface ItemDetailOutput {
 }
 
 /**
+ * Character detail output (examine command)
+ */
+export interface CharacterDetailOutput {
+  readonly type: 'character_detail';
+  readonly data: {
+    readonly id: string;
+    readonly name: string;
+    readonly description: string;
+    readonly stats: {
+      readonly level?: number;
+      readonly hp: number;
+      readonly maxHp: number;
+      readonly attackPower: number;
+      readonly defense: number;
+    };
+    readonly equipment?: {
+      readonly weapon?: string;
+      readonly armor?: string;
+    };
+  };
+  readonly text: string;
+}
+
+/**
  * Generic system message (equip/unequip confirmations, etc.)
  */
 export interface SystemMessageOutput {
@@ -78,4 +102,9 @@ export interface SystemMessageOutput {
 /**
  * Union of all output types
  */
-export type CommandOutput = RoomOutput | InventoryOutput | ItemDetailOutput | SystemMessageOutput;
+export type CommandOutput =
+  | RoomOutput
+  | InventoryOutput
+  | ItemDetailOutput
+  | CharacterDetailOutput
+  | SystemMessageOutput;

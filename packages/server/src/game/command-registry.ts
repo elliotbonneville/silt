@@ -45,6 +45,15 @@ export const COMMAND_REGISTRY: readonly CommandDefinition[] = [
     aiUsable: true,
   },
   {
+    name: 'shout',
+    aliases: [],
+    description: 'Shout something loudly that can be heard in nearby rooms',
+    usage: 'shout <message>',
+    category: 'social',
+    requiredArgs: ['message'],
+    aiUsable: true,
+  },
+  {
     name: 'emote',
     aliases: ['me'],
     description: 'Perform an action or emote',
@@ -83,10 +92,10 @@ export const COMMAND_REGISTRY: readonly CommandDefinition[] = [
   {
     name: 'examine',
     aliases: ['exam', 'ex'],
-    description: 'Examine an item in detail',
-    usage: 'examine <item>',
+    description: 'Examine an item or character in detail',
+    usage: 'examine <target>',
     category: 'observation',
-    requiredArgs: ['item'],
+    requiredArgs: ['target'],
     aiUsable: true,
   },
   {
@@ -174,10 +183,11 @@ function getArgDescription(commandName: string, argName: string): string {
     go: { direction: 'Direction to move (north, south, east, west, up, down)' },
     attack: { target: 'Name of the character to attack' },
     say: { message: 'What to say' },
+    shout: { message: 'What to shout (can be heard in nearby rooms)' },
     emote: { action: 'Action to perform' },
     take: { item: 'Name of the item to pick up' },
     drop: { item: 'Name of the item to drop' },
-    examine: { item: 'Name of the item to examine' },
+    examine: { target: 'Name of the item or character to examine' },
     equip: { item: 'Name of the item to equip' },
   };
 

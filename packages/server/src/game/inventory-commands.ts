@@ -125,54 +125,7 @@ export async function executeDropCommand(
   };
 }
 
-/**
- * Execute the 'examine' command
- */
-export async function executeExamineCommand(
-  ctx: CommandContext,
-  itemName: string,
-): Promise<CommandResult> {
-  if (!itemName) return { success: false, events: [], error: 'Examine what?' };
-
-  const inventoryItems = await findItemsInInventory(ctx.character.id);
-  const roomItems = await findItemsInRoom(ctx.character.currentRoomId);
-  const item = [...inventoryItems, ...roomItems].find(
-    (i) => i.name.toLowerCase() === itemName.toLowerCase(),
-  );
-
-  if (!item) return { success: false, events: [], error: `You don't see "${itemName}" here.` };
-
-  const stats = getItemStats(item);
-  const statLines: string[] = [];
-  if (stats.damage) statLines.push(`Damage: +${stats.damage}`);
-  if (stats.defense) statLines.push(`Defense: +${stats.defense}`);
-  if (stats.healing) statLines.push(`Healing: ${stats.healing} HP`);
-
-  const statsText = statLines.length > 0 ? `\n${statLines.join('\n')}` : '';
-  const text = `${item.name}\n${item.description}${statsText}\nType: ${item.itemType}`;
-
-  // Filter out undefined values for exact optional properties
-  const cleanedStats: { damage?: number; defense?: number; healing?: number } = {};
-  if (stats.damage !== undefined) cleanedStats.damage = stats.damage;
-  if (stats.defense !== undefined) cleanedStats.defense = stats.defense;
-  if (stats.healing !== undefined) cleanedStats.healing = stats.healing;
-
-  return {
-    success: true,
-    events: [],
-    output: {
-      type: 'item_detail',
-      data: {
-        id: item.id,
-        name: item.name,
-        description: item.description,
-        itemType: item.itemType,
-        stats: cleanedStats,
-      },
-      text,
-    },
-  };
-}
+// executeExamineCommand removed
 
 /**
  * Execute the 'equip' command
