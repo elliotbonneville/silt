@@ -97,6 +97,8 @@ export class GameEngine {
     this.combatSystem = new CombatSystem(this.eventPropagator);
     this.commandHandler = new CommandHandler(this.characterManager, this.eventPropagator);
 
+    this.gameLoop.addSystem(this.eventPropagator);
+
     this.commandProcessor = new CommandProcessor(
       this.io,
       this.characterManager,
