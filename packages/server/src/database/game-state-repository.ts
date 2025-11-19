@@ -27,7 +27,10 @@ export async function getGameState(): Promise<GameState> {
 /**
  * Update game state
  */
-export async function updateGameState(data: { readonly isPaused?: boolean }): Promise<GameState> {
+export async function updateGameState(data: {
+  readonly isPaused?: boolean;
+  readonly gameTime?: bigint;
+}): Promise<GameState> {
   return await prisma.gameState.upsert({
     where: { id: SINGLETON_ID },
     update: data,

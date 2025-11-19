@@ -10,7 +10,14 @@ interface SystemEventProps {
   readonly isAmbient?: boolean;
 }
 
-export function SystemEvent({ content, color, isAmbient = false }: SystemEventProps): JSX.Element {
+export function SystemEvent({
+  content,
+  color,
+  isAmbient = false,
+}: SystemEventProps): JSX.Element | null {
+  // Don't render if content is "undefined" string or empty (defensive check)
+  if (!content || content === 'undefined') return null;
+
   const lines = content.split('\n');
 
   return (

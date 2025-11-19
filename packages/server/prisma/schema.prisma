@@ -54,6 +54,7 @@ model Character {
   maxHp         Int      @default(100)
   attackPower   Int      @default(10)
   defense       Int      @default(5)
+  speed         Int      @default(5)
   
   // State
   isAlive       Boolean  @default(true)
@@ -206,4 +207,28 @@ model GameState {
   updatedAt DateTime @updatedAt
   
   @@map("game_state")
+}
+
+model TokenUsage {
+  id               String   @id @default(cuid())
+  
+  // AI details
+  model            String
+  provider         String   @default("openai") // 'openai', 'anthropic', or baseURL
+  promptTokens     Int
+  completionTokens Int
+  totalTokens      Int
+  cost             Float    @default(0) // Calculated cost in USD
+  
+  // Context
+  source           String   // 'decision', 'conversation', 'spatial'
+  agentId          String?  // Optional, if associated with an agent
+  sourceEventId    String?  // Optional, if triggered by a specific event
+  
+  createdAt        DateTime @default(now())
+  
+  @@index([createdAt])
+  @@index([agentId])
+  @@index([sourceEventId])
+  @@map("token_usage")
 }

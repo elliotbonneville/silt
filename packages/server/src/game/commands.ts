@@ -4,7 +4,7 @@
 
 import type { Character } from '@prisma/client';
 import type { CommandOutput, GameEvent } from '@silt/shared';
-import { executeAttackCommand } from './combat-commands.js';
+import { executeAttackCommand, executeFleeCommand } from './combat-commands.js';
 import {
   executeDropCommand,
   executeEquipCommand,
@@ -15,9 +15,11 @@ import {
 import { executeGoCommand, executeLookCommand } from './navigation-commands.js';
 import { executeExamineCommand } from './observation-commands.js';
 import { executeEmoteCommand, executeSayCommand, executeShoutCommand } from './social-commands.js';
+import type { CombatSystem } from './systems/combat-system.js';
 
 export interface CommandContext {
   readonly character: Character;
+  readonly combatSystem?: CombatSystem;
 }
 
 export interface CommandResult {
@@ -127,6 +129,11 @@ export async function parseAndExecuteCommand(
     case 'fight':
     case 'hit':
       return await executeAttackCommand(ctx, args.join(' '));
+
+    case 'flee':
+    case 'run':
+    case 'escape':
+      return await executeFleeCommand(ctx);
 
     default:
       return { success: false, events: [], error: `Unknown command: ${command}` };

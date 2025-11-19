@@ -87,6 +87,7 @@ export function EventDetail(): JSX.Element {
   const llmResponse =
     typeof event.data?.['llmResponse'] === 'string' ? event.data['llmResponse'] : null;
   const agentName = typeof event.data?.['agentName'] === 'string' ? event.data['agentName'] : null;
+  const agentId = typeof event.data?.['agentId'] === 'string' ? event.data['agentId'] : null;
 
   return (
     <div className="h-full overflow-y-auto bg-gray-900 text-white">
@@ -96,13 +97,25 @@ export function EventDetail(): JSX.Element {
           <Link to="/admin/events" className="text-cyan-400 hover:text-cyan-300 text-sm">
             ← Back to events
           </Link>
-          <button
-            type="button"
-            onClick={() => event && copyToClipboard(JSON.stringify(event, null, 2), setCopiedEvent)}
-            className="text-xs px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition-colors"
-          >
-            {copiedEvent ? '✓ Copied Event!' : '📋 Copy Event JSON'}
-          </button>
+          <div className="flex gap-2">
+            {agentId && (
+              <Link
+                to={`/admin/agents/${agentId}/overview`}
+                className="text-xs px-3 py-1.5 rounded bg-cyan-900/50 hover:bg-cyan-900 text-cyan-400 border border-cyan-700/50 transition-colors"
+              >
+                👤 View Agent
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={() =>
+                event && copyToClipboard(JSON.stringify(event, null, 2), setCopiedEvent)
+              }
+              className="text-xs px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition-colors"
+            >
+              {copiedEvent ? '✓ Copied Event!' : '📋 Copy Event JSON'}
+            </button>
+          </div>
         </div>
         <h1 className="text-2xl font-bold text-cyan-400 mb-2">{event.type}</h1>
         <div className="flex gap-4 text-sm text-gray-400">

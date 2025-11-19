@@ -6,18 +6,19 @@
 import type { Character } from '@prisma/client';
 import type { CharacterListItem, RoomState } from '@silt/shared';
 import type { Server } from 'socket.io';
-import { findCharacterById, updateCharacter } from '../database/character-repository.js';
+import { findCharacterById } from '../database/character-repository.js';
+import { prisma } from '../database/client.js';
 import { getGameState, updateGameState } from '../database/game-state-repository.js';
-import { createPlayerLog } from '../database/player-log-repository.js';
 import { setupAdminHandlers } from './admin-handler.js';
 import { AIService } from './ai/index.js';
 import { AIAgentManager } from './ai-agent-manager.js';
 import { aiDebugLogger } from './ai-debug-logger.js';
 import { CharacterManager } from './character-manager.js';
 import { CommandHandler } from './command-handler.js';
-import { type CommandContext, parseAndExecuteCommand } from './commands.js';
+import { CommandProcessor } from './command-processor.js';
 import { ConnectionHandler } from './connection-handler.js';
 import { EventPropagator } from './event-propagator.js';
+import { CombatSystem } from './systems/combat-system.js';
 import { CommandQueue, type QueuedCommand } from './systems/command-queue.js';
 import { GameLoop } from './systems/game-loop.js';
 import { WorldClock } from './systems/world-clock.js';
@@ -25,12 +26,14 @@ import { WorldClock } from './systems/world-clock.js';
 export class GameEngine {
   readonly characterManager: CharacterManager;
   private readonly aiAgentManager: AIAgentManager;
-  private eventPropagator!: EventPropagator;
-  private commandHandler!: CommandHandler;
-  private connectionHandler!: ConnectionHandler;
   private readonly gameLoop: GameLoop;
   private readonly worldClock: WorldClock;
   private readonly commandQueue: CommandQueue;
+  private eventPropagator: EventPropagator | null = null;
+  private commandHandler: CommandHandler | null = null;
+  private connectionHandler: ConnectionHandler | null = null;
+  private combatSystem: CombatSystem | null = null;
+  private commandProcessor: CommandProcessor | null = null;
   private initialized = false;
   private paused = false;
 
@@ -40,18 +43,26 @@ export class GameEngine {
     this.worldClock = new WorldClock();
     this.commandQueue = new CommandQueue(this.processQueuedCommand.bind(this));
 
-    // Initialize AI service
     const apiKey = process.env['OPENAI_API_KEY'];
+    const baseURL = process.env['OPENAI_BASE_URL'];
+
     if (!apiKey) {
       throw new Error('OPENAI_API_KEY environment variable is required');
     }
 
-    const aiService = new AIService(apiKey);
+    const aiService = new AIService(apiKey, baseURL);
+    console.info(
+      `🤖 AI Service: Connected to ${baseURL || 'OpenAI Default'} with model ${process.env['OPENAI_MODEL'] || 'gpt-4o-mini'}`,
+    );
+    if (baseURL) {
+      console.info(`🌐 AI Provider URL: ${baseURL}`);
+    }
+    console.info(`🔑 API Key starts with: ${apiKey.substring(0, 8)}...`);
+
     this.aiAgentManager = new AIAgentManager(
       aiService,
       async (id: string) => await findCharacterById(id),
       async (_agent, character, action) => {
-        // Enqueue AI actions instead of executing immediately
         const commandText = this.aiAgentManager.buildCommandFromAction(action);
         this.commandQueue.enqueue({
           type: 'ai',
@@ -62,7 +73,6 @@ export class GameEngine {
       },
     );
 
-    // Register game systems
     this.gameLoop.addSystem(this.worldClock);
     this.gameLoop.addSystem(this.commandQueue);
     this.gameLoop.addSystem(this.aiAgentManager);
@@ -70,13 +80,9 @@ export class GameEngine {
     console.info('🤖 AI Service: OpenAI API ready');
   }
 
-  /**
-   * Initialize the game engine - load world from database
-   */
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    // Load game state (pause status, etc.)
     const gameState = await getGameState();
     this.paused = gameState.isPaused;
     if (gameState.gameTime) {
@@ -85,19 +91,19 @@ export class GameEngine {
 
     if (this.paused) {
       console.info('⏸️  Game engine starting in PAUSED state');
-      this.worldClock.pause();
     }
 
-    // Load AI agents
-    const aiAgents = await this.aiAgentManager.loadAgents();
-    console.info(`✅ Loaded ${aiAgents.length} AI agents`);
-
-    // Initialize event propagator
     this.eventPropagator = new EventPropagator(this.characterManager, this.aiAgentManager, this.io);
-    this.gameLoop.addSystem(this.eventPropagator);
-
-    // Initialize command handler
+    this.combatSystem = new CombatSystem(this.eventPropagator);
     this.commandHandler = new CommandHandler(this.characterManager, this.eventPropagator);
+
+    this.commandProcessor = new CommandProcessor(
+      this.io,
+      this.characterManager,
+      this.aiAgentManager,
+      this.commandHandler,
+      this.combatSystem,
+    );
 
     this.connectionHandler = new ConnectionHandler(
       this.io,
@@ -105,62 +111,84 @@ export class GameEngine {
       this.eventPropagator,
     );
 
-    // Set up AI debug logger to broadcast through event system
     aiDebugLogger.setEventPropagator(this.eventPropagator);
 
-    // Set up admin socket handlers
     setupAdminHandlers(this.io);
+
+    await this.aiAgentManager.loadAgents();
 
     if (!this.paused) {
       this.aiAgentManager.startProactiveLoop();
     }
 
-    // Start game loop (always runs to process commands, even if simulation is paused)
     this.gameLoop.start();
 
-    // Initialize spatial memory in background (don't block startup)
-    this.aiAgentManager
-      .initializeSpatialMemory()
-      .catch((error) => console.error('Failed to initialize spatial memory:', error));
+    this.aiAgentManager.initializeSpatialMemory().catch((err) => {
+      console.error('Failed to initialize spatial memory:', err);
+    });
 
     this.initialized = true;
+    console.info('✅ Game engine initialized successfully');
   }
 
-  /**
-   * Get characters for a username
-   */
+  async shutdown(): Promise<void> {
+    console.info('🛑 Shutting down game engine...');
+    this.gameLoop.stop();
+    this.aiAgentManager.stopProactiveLoop();
+    await this.aiAgentManager.saveEventQueuesToDatabase();
+    await updateGameState({ gameTime: BigInt(this.worldClock.time) });
+    console.info('✅ Game engine shut down complete');
+  }
+
   async getCharactersForUsername(username: string): Promise<CharacterListItem[]> {
     return this.characterManager.getCharactersForUsername(username);
   }
 
-  /**
-   * Create a new character for a username
-   */
   async createNewCharacter(username: string, name: string): Promise<Character> {
     if (!this.initialized) throw new Error('Game engine not initialized');
     return this.characterManager.createNewCharacter(username, name);
   }
 
-  /**
-   * Connect a player to a character
-   */
   async connectPlayerToCharacter(socketId: string, characterId: string): Promise<Character> {
-    if (!this.initialized) throw new Error('Game engine not initialized');
+    if (!this.initialized || !this.connectionHandler)
+      throw new Error('Game engine not initialized');
     return this.connectionHandler.connectPlayer(socketId, characterId);
   }
 
-  /**
-   * Disconnect a player
-   */
   async disconnectPlayer(socketId: string): Promise<void> {
+    if (!this.connectionHandler) throw new Error('Game engine not initialized');
     await this.connectionHandler.disconnectPlayer(socketId);
   }
 
-  /**
-   * Handle a command from a player
-   * Enqueues command for processing in the next game tick
-   */
   async handleCommand(socketId: string, commandText: string): Promise<void> {
+    await this.onPlayerCommand(socketId, commandText);
+  }
+
+  async emitCharacterList(): Promise<void> {
+    // Get all connected players
+    const allCharacters = await prisma.character.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const characters: CharacterListItem[] = allCharacters.map((char) => {
+      const item: CharacterListItem = {
+        id: char.id,
+        name: char.name,
+        isAlive: char.isAlive,
+        hp: char.hp,
+        maxHp: char.maxHp,
+        createdAt: char.createdAt.toISOString(),
+      };
+      if (char.diedAt) {
+        return { ...item, diedAt: char.diedAt.toISOString() };
+      }
+      return item;
+    });
+
+    this.io.emit('admin:characters', { characters });
+  }
+
+  async onPlayerCommand(socketId: string, commandText: string): Promise<void> {
     this.commandQueue.enqueue({
       type: 'player',
       actorId: socketId,
@@ -169,94 +197,17 @@ export class GameEngine {
     });
   }
 
-  /**
-   * Process a queued command (Internal logic)
-   * Runs inside the game loop tick
-   */
   private async processQueuedCommand(cmd: QueuedCommand): Promise<void> {
-    let character: Character | null = null;
-
-    // Resolve character based on command type
-    if (cmd.type === 'player') {
-      character = await this.characterManager.getCharacterBySocketId(cmd.actorId);
-    } else {
-      character = await findCharacterById(cmd.actorId);
+    if (!this.commandProcessor) {
+      throw new Error('Game engine not initialized');
     }
-
-    if (!character) {
-      console.warn(`Could not find character for ${cmd.type} command: ${cmd.actorId}`);
-      return;
-    }
-
-    // Determine socketId for output (if player)
-    const socketId =
-      cmd.type === 'player' ? this.characterManager.getSocketIdForCharacter(character.id) : null;
-
-    const context: CommandContext = {
-      character,
-    };
-
-    // Persist command log
-    await createPlayerLog(character.id, 'command', cmd.commandText);
-
-    const result = await parseAndExecuteCommand(cmd.commandText, context);
-
-    if (!result.success && result.error) {
-      // Send error to player
-      if (socketId) {
-        this.io.to(socketId).emit('game:error', { message: result.error });
-      }
-      // Persist error
-      await createPlayerLog(character.id, 'output', { type: 'error', message: result.error });
-      return;
-    }
-
-    // Send structured output
-    if (result.output) {
-      if (socketId) {
-        // Send to player
-        this.io.to(socketId).emit('game:output', result.output);
-      } else {
-        // Queue for AI
-        this.aiAgentManager.queueOutputForAgent(character.id, result.output);
-      }
-      // Persist output
-      await createPlayerLog(character.id, 'output', result.output);
-    }
-
-    // Handle movement - persist character position to database
-    const moveEvent = result.events.find((e) => e.type === 'movement');
-    if (moveEvent?.data && this.isMovementData(moveEvent.data)) {
-      await updateCharacter(character.id, { currentRoomId: moveEvent.data.toRoomId });
-    }
-
-    // Process command results (broadcast events, AI responses, stats, death)
-    await this.commandHandler.processResults(result, character);
+    await this.commandProcessor.processCommand(cmd);
   }
 
-  /**
-   * Type guard for movement event data
-   */
-  private isMovementData(
-    data: Record<string, unknown>,
-  ): data is { fromRoomId: string; toRoomId: string; direction: string } {
-    return (
-      typeof data['fromRoomId'] === 'string' &&
-      typeof data['toRoomId'] === 'string' &&
-      typeof data['direction'] === 'string'
-    );
-  }
-
-  /**
-   * Get room state for a character
-   */
   async getCharacterRoomState(characterId: string): Promise<RoomState> {
     return this.characterManager.getCharacterRoomState(characterId);
   }
 
-  /**
-   * Pause the game engine (stops AI proactive loop)
-   */
   async pause(): Promise<void> {
     if (!this.paused) {
       this.paused = true;
@@ -267,9 +218,6 @@ export class GameEngine {
     }
   }
 
-  /**
-   * Resume the game engine (restarts AI proactive loop)
-   */
   async resume(): Promise<void> {
     if (this.paused) {
       this.paused = false;
@@ -280,10 +228,11 @@ export class GameEngine {
     }
   }
 
-  /**
-   * Get current pause state
-   */
   isPaused(): boolean {
     return this.paused;
+  }
+
+  getWorldClock(): WorldClock {
+    return this.worldClock;
   }
 }

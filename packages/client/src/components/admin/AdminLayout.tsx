@@ -84,6 +84,16 @@ function AdminLayoutContent(): JSX.Element {
         >
           AI Agents
         </Link>
+        <Link
+          to="/admin/analytics"
+          className={`px-6 py-3 font-semibold ${
+            location.pathname === '/admin/analytics'
+              ? 'border-b-2 border-yellow-400 text-yellow-400'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          Analytics
+        </Link>
       </div>
 
       {/* Route content */}

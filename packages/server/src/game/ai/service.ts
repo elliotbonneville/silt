@@ -10,14 +10,15 @@ import type { AIAction, AIAgentMemory, AIDecision, AIResponse, RelationshipData 
 export class AIService {
   public readonly client: OpenAI;
 
-  constructor(apiKey: string) {
-    this.client = new OpenAI({ apiKey });
+  constructor(apiKey: string, baseURL?: string) {
+    this.client = new OpenAI({ apiKey, baseURL });
   }
 
   /**
    * Generate a conversational response
    */
   async generateResponse(
+    agentId: string,
     agentPersonality: string,
     playerName: string,
     playerMessage: string,
@@ -26,6 +27,7 @@ export class AIService {
   ): Promise<AIResponse> {
     return generateResponse(
       this.client,
+      agentId,
       agentPersonality,
       playerName,
       playerMessage,
@@ -38,6 +40,7 @@ export class AIService {
    * Decide what action AI should take
    */
   async decideAction(
+    agentId: string,
     agentPersonality: string,
     agentName: string,
     eventLog: Array<{ timestamp: number; content: string; type: 'event' | 'output' }>,
@@ -45,9 +48,11 @@ export class AIService {
     timeSinceLastAction: number,
     roomContext: string,
     spatialMemory?: string,
+    sourceEventId?: string,
   ): Promise<{ action: AIAction | null; prompt: string; response: string }> {
     return decideAction(
       this.client,
+      agentId,
       agentPersonality,
       agentName,
       eventLog,
@@ -55,6 +60,7 @@ export class AIService {
       timeSinceLastAction,
       roomContext,
       spatialMemory,
+      sourceEventId,
     );
   }
 
@@ -62,6 +68,7 @@ export class AIService {
    * Decide if AI should respond to recent events
    */
   async decideResponse(
+    agentId: string,
     agentPersonality: string,
     agentName: string,
     recentEvents: string[],
@@ -71,6 +78,7 @@ export class AIService {
   ): Promise<AIDecision> {
     return decideResponse(
       this.client,
+      agentId,
       agentPersonality,
       agentName,
       recentEvents,

@@ -27,6 +27,7 @@ function createMockCharacter(overrides: Partial<Character> = {}): Character {
     isAlive: true,
     isDead: false,
     lastActionAt: new Date(),
+    speed: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     diedAt: null,

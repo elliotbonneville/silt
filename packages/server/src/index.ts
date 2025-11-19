@@ -41,6 +41,7 @@ const gameEngine = new GameEngine(io);
 
 // Import and setup REST API routes (will be done after engine initialization)
 import { setupAdminRoutes } from './api/admin-routes.js';
+import { setupAnalyticsRoutes } from './api/analytics-routes.js';
 import { setupCharacterRoutes } from './api/character-routes.js';
 
 // WebSocket connection handling
@@ -112,6 +113,7 @@ async function startServer(): Promise<void> {
     // Setup REST API routes
     setupCharacterRoutes(app, gameEngine.characterManager);
     setupAdminRoutes(app, gameEngine);
+    setupAnalyticsRoutes(app);
 
     httpServer.listen(PORT, () => {
       console.info(`🎮 Silt Server running on port ${PORT}`);

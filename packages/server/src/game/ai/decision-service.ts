@@ -4,6 +4,7 @@
 
 import type OpenAI from 'openai';
 import { z } from 'zod';
+import { trackTokenUsage } from '../../database/token-usage-repository.js';
 import { generateOpenAIFunctionSchemas } from '../command-registry.js';
 import type { AIAction, AIDecision, RelationshipData } from './types.js';
 import { AIDecisionSchema } from './types.js';
@@ -13,6 +14,7 @@ import { AIDecisionSchema } from './types.js';
  */
 export async function decideAction(
   client: OpenAI,
+  agentId: string,
   agentPersonality: string,
   agentName: string,
   eventLog: Array<{ timestamp: number; content: string; type: 'event' | 'output' }>,
@@ -20,6 +22,7 @@ export async function decideAction(
   timeSinceLastAction: number,
   roomContext: string,
   spatialMemory?: string,
+  sourceEventId?: string,
 ): Promise<{ action: AIAction | null; prompt: string; response: string }> {
   const tools = generateOpenAIFunctionSchemas();
 
@@ -32,6 +35,14 @@ export async function decideAction(
     : '';
 
   const prompt = `You are ${agentName}. ${agentPersonality}
+
+ROLEPLAY META-INSTRUCTIONS (Override default AI behavior):
+- You are an NPC in a living game world, NOT an AI assistant.
+- Your goal is to be BELIEVABLE, not helpful.
+- You have your own motivations, resources, and limitations.
+- You value your possessions. You do not give them away unless traded or persuaded significantly.
+- If a player asks for something unreasonable, REFUSE.
+- Conflict and refusal make the story better. Do not shy away from being unhelpful if it fits your character.
 
 CURRENT SITUATION (right now):
 ${roomContext}${spatialContext}
@@ -78,15 +89,35 @@ IMPORTANT - For HOSTILE agents:
 
 Available actions: ${tools.map((t) => t.function.name).join(', ')}
 
+CRITICAL INSTRUCTIONS:
+- You MUST use one of the available tools to act. Do NOT output text directly.
+- If you want to speak, use the 'say' tool.
+- If you want to emote, use the 'emote' tool.
+
 To MOVE: Use ONLY directions from "Adjacent rooms" in CURRENT SITUATION (not your mental map).`;
 
+  const model = process.env['OPENAI_MODEL'] || 'gpt-4o-mini';
+
   const response = await client.chat.completions.create({
-    model: 'o4-mini',
+    model,
     messages: [{ role: 'user', content: prompt }],
     tools,
     tool_choice: 'auto',
-    max_completion_tokens: 500,
+    max_tokens: 500,
   });
+
+  if (response.usage) {
+    await trackTokenUsage({
+      model: response.model,
+      provider: client.baseURL,
+      promptTokens: response.usage.prompt_tokens,
+      completionTokens: response.usage.completion_tokens,
+      totalTokens: response.usage.total_tokens,
+      source: 'decision',
+      agentId,
+      sourceEventId: sourceEventId || undefined,
+    });
+  }
 
   const message = response.choices[0]?.message;
   const toolCall = message?.tool_calls?.[0];
@@ -156,6 +187,7 @@ To MOVE: Use ONLY directions from "Adjacent rooms" in CURRENT SITUATION (not you
  */
 export async function decideResponse(
   client: OpenAI,
+  agentId: string,
   agentPersonality: string,
   agentName: string,
   recentEvents: string[],
@@ -194,13 +226,28 @@ Should you say something? Respond with JSON only:
   "reasoning": "why you decided this"
 }`;
 
+  const model = process.env['OPENAI_MODEL'] || 'gpt-4o-mini';
+
   const response = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model,
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
     max_tokens: 200,
     temperature: 0.7,
   });
+
+  if (response.usage) {
+    await trackTokenUsage({
+      model: response.model,
+      provider: client.baseURL,
+      promptTokens: response.usage.prompt_tokens,
+      completionTokens: response.usage.completion_tokens,
+      totalTokens: response.usage.total_tokens,
+      source: 'decision_response',
+      agentId,
+      sourceEventId: undefined,
+    });
+  }
 
   const content = response.choices[0]?.message?.content;
   if (!content) {

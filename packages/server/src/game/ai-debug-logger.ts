@@ -25,6 +25,7 @@ class AIDebugLogger {
     agentName: string,
     event: 'decision' | 'action' | 'error',
     data: unknown,
+    eventId?: string,
   ): void {
     // Create an AI event (will be persisted like any other event)
     const eventType: GameEventType = `ai:${event}`;
@@ -49,7 +50,7 @@ class AIDebugLogger {
     }
 
     const aiEvent: GameEvent = {
-      id: `event-${nanoid(10)}`,
+      id: eventId || `event-${nanoid(10)}`,
       type: eventType,
       timestamp: Date.now(),
       originRoomId: '', // AI events don't have a room origin
@@ -74,3 +75,8 @@ class AIDebugLogger {
 }
 
 export const aiDebugLogger = new AIDebugLogger();
+
+// Export ID generator for pre-generation
+export function generateEventId(): string {
+  return `event-${nanoid(10)}`;
+}

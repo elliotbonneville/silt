@@ -13,6 +13,9 @@ import AgentOverviewRoute from './routes/admin/agents/overview.js';
 import AgentPromptRoute from './routes/admin/agents/prompt.js';
 import AgentRelationshipsRoute from './routes/admin/agents/relationships.js';
 import AgentSpatialRoute from './routes/admin/agents/spatial.js';
+import AnalyticsLayout from './routes/admin/analytics/layout.js';
+import AnalyticsRequests from './routes/admin/analytics/requests.js';
+import AnalyticsSummary from './routes/admin/analytics/summary.js';
 import EventDetailRoute from './routes/admin/event-detail.js';
 import AdminEventsRoute from './routes/admin/events.js';
 import AdminMapRoute from './routes/admin/map.js';
@@ -39,6 +42,11 @@ createRoot(rootElement).render(
           <Route path="events" element={<AdminEventsRoute />} />
           <Route path="events/:eventId" element={<EventDetailRoute />} />
           <Route path="map" element={<AdminMapRoute />} />
+          <Route path="analytics" element={<AnalyticsLayout />}>
+            <Route index element={<Navigate to="summary" replace />} />
+            <Route path="summary" element={<AnalyticsSummary />} />
+            <Route path="requests" element={<AnalyticsRequests />} />
+          </Route>
           <Route path="agents" element={<AgentsLayoutRoute />}>
             <Route index element={<Navigate to="/admin/agents" replace />} />
             <Route path=":agentId" element={<AgentLayoutRoute />}>

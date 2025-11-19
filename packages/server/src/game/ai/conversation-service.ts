@@ -3,6 +3,7 @@
  */
 
 import type OpenAI from 'openai';
+import { trackTokenUsage } from '../../database/token-usage-repository.js';
 import { createNewRelationship } from './memory-utils.js';
 import type { AIAgentMemory, AIResponse } from './types.js';
 
@@ -11,6 +12,7 @@ import type { AIAgentMemory, AIResponse } from './types.js';
  */
 export async function generateResponse(
   client: OpenAI,
+  agentId: string,
   agentPersonality: string,
   playerName: string,
   playerMessage: string,
@@ -55,6 +57,18 @@ Room context: ${roomContext}`;
     max_tokens: 150,
     temperature: 0.8,
   });
+
+  if (response.usage) {
+    await trackTokenUsage({
+      model: response.model,
+      provider: client.baseURL,
+      promptTokens: response.usage.prompt_tokens,
+      completionTokens: response.usage.completion_tokens,
+      totalTokens: response.usage.total_tokens,
+      source: 'conversation',
+      agentId,
+    });
+  }
 
   const aiMessage = response.choices[0]?.message?.content || 'I have nothing to say.';
 
