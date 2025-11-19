@@ -38,7 +38,6 @@ export function SpawnAgentModal({
     e.preventDefault();
     setError('');
     setIsSubmitting(true);
-
     try {
       const response = await fetch(`${SERVER_URL}/admin/agents`, {
         method: 'POST',
@@ -55,7 +54,6 @@ export function SpawnAgentModal({
           defense,
         }),
       });
-
       if (!response.ok) {
         const data: unknown = await response.json();
         const errorMsg =
@@ -67,7 +65,6 @@ export function SpawnAgentModal({
             : 'Failed to create agent';
         throw new Error(errorMsg);
       }
-
       // Reset form
       setName('');
       setSystemPrompt('');
@@ -78,7 +75,6 @@ export function SpawnAgentModal({
       setMaxHp(100);
       setAttackPower(10);
       setDefense(5);
-
       onSuccess();
       onClose();
     } catch (err) {
@@ -92,7 +88,6 @@ export function SpawnAgentModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-gray-800 rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <h2 className="text-2xl font-bold text-cyan-400 mb-4">Spawn New AI Agent</h2>
-
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           {/* Name */}
           <div>
@@ -110,7 +105,6 @@ export function SpawnAgentModal({
               placeholder="Agent name"
             />
           </div>
-
           {/* System Prompt */}
           <div>
             <label
@@ -130,7 +124,6 @@ export function SpawnAgentModal({
               placeholder="Describe the agent's personality, goals, and backstory..."
             />
           </div>
-
           {/* Rooms */}
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -155,7 +148,6 @@ export function SpawnAgentModal({
                 ))}
               </select>
             </div>
-
             <div>
               <label
                 htmlFor="agent-current-room"
@@ -179,7 +171,6 @@ export function SpawnAgentModal({
               </select>
             </div>
           </div>
-
           {/* Max Rooms From Home */}
           <div>
             <label
@@ -198,7 +189,6 @@ export function SpawnAgentModal({
               className="w-full"
             />
           </div>
-
           {/* Stats */}
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -215,7 +205,6 @@ export function SpawnAgentModal({
                 className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white focus:outline-none focus:border-cyan-500"
               />
             </div>
-
             <div>
               <label
                 htmlFor="agent-max-hp"
@@ -233,7 +222,6 @@ export function SpawnAgentModal({
                 className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white focus:outline-none focus:border-cyan-500"
               />
             </div>
-
             <div>
               <label
                 htmlFor="agent-attack"
@@ -251,7 +239,6 @@ export function SpawnAgentModal({
                 className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white focus:outline-none focus:border-cyan-500"
               />
             </div>
-
             <div>
               <label
                 htmlFor="agent-defense"
@@ -270,14 +257,12 @@ export function SpawnAgentModal({
               />
             </div>
           </div>
-
           {/* Error Message */}
           {error && (
             <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-2 rounded">
               {error}
             </div>
           )}
-
           {/* Buttons */}
           <div className="flex gap-3 justify-end pt-4">
             <button

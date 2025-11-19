@@ -14,12 +14,38 @@ import type { CharacterManager } from './character-manager.js';
 import { getRoomsWithinDistance } from './event-distance.js';
 import { formatEventContent } from './event-formatter.js';
 
-export class EventPropagator {
+import type { GameSystem, TickContext } from './systems/game-loop.js';
+
+export class EventPropagator implements GameSystem {
+  private eventQueue: GameEvent[] = [];
+
   constructor(
     private readonly characterManager: CharacterManager,
     private readonly aiAgentManager: AIAgentManager,
     private readonly io?: Server,
   ) {}
+
+  /**
+   * Game System Tick - Process queued events
+   */
+  onTick(_context: TickContext): void {
+    this.flushQueue().catch((error) => {
+      console.error('Error flushing event queue:', error);
+    });
+  }
+
+  private async flushQueue(): Promise<void> {
+    if (this.eventQueue.length === 0) return;
+
+    const events = [...this.eventQueue];
+    this.eventQueue = []; // Clear queue immediately
+
+    // Process all events
+    // Note: sequential processing to ensure order is preserved
+    for (const event of events) {
+      await this.processEvent(event);
+    }
+  }
 
   /**
    * Calculate which actors (players + AI agents) should receive an event
@@ -100,10 +126,16 @@ export class EventPropagator {
   }
 
   /**
-   * Broadcast an event to all affected actors (polymorphic delivery)
-   * Formats event content per-recipient for personalized messaging
+   * Broadcast an event (Queues it for next tick)
    */
   async broadcast(event: GameEvent): Promise<void> {
+    this.eventQueue.push(event);
+  }
+
+  /**
+   * Process a single event (Internal logic, formerly broadcast)
+   */
+  private async processEvent(event: GameEvent): Promise<void> {
     // Persist ALL events to database (including AI events)
     saveGameEvent(event).catch((error) => {
       console.error('Failed to save event to database:', error);

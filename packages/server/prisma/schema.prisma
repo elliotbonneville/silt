@@ -200,6 +200,7 @@ model AIAgent {
 model GameState {
   id        String   @id @default("singleton") // Always use same ID for singleton
   isPaused  Boolean  @default(false)
+  gameTime  BigInt   @default(0) // Persistent world clock
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

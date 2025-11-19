@@ -4,19 +4,26 @@
 
 import type { AIAgent, Character } from '@prisma/client';
 import type { GameEvent } from '@silt/shared';
-import { findAllAIAgents, findCharacterById, updateAIAgent } from '../database/index.js';
+import { findAllAIAgents, updateAIAgent } from '../database/index.js';
+import { loadAgentsWithQueues, saveEventQueues } from './ai/agent-persistence.js';
 import { buildRoomContext, formatRoomContextForPrompt } from './ai/context-builder.js';
 import type { AIAction, AIService } from './ai/index.js';
-import { parseRelationships, refreshAgentSpatialMemory } from './ai/index.js';
+import { parseRelationships } from './ai/index.js';
+import { initializeSpatialMemory } from './ai/spatial-memory-system.js';
 import { aiDebugLogger } from './ai-debug-logger.js';
+import type { GameSystem, TickContext } from './systems/game-loop.js';
 
 const MIN_RESPONSE_COOLDOWN_MS = 3000; // Minimum 3 seconds between responses
 const EVENT_CONTEXT_WINDOW_MS = 90000; // Keep events for 90 seconds (historical context)
 
-export class AIAgentManager {
+export class AIAgentManager implements GameSystem {
   private agentEventQueues = new Map<string, GameEvent[]>(); // agentId → event queue
   private agentOutputQueues = new Map<string, Array<{ timestamp: number; text: string }>>(); // agentId → output queue
-  private proactiveLoopTimer: NodeJS.Timeout | undefined = undefined;
+
+  // Timer accumulators for loop-based scheduling
+  private proactiveTimer = 0;
+  private saveTimer = 0;
+  private isRunning = false;
 
   constructor(
     private readonly aiService: AIService,
@@ -32,37 +39,8 @@ export class AIAgentManager {
    * Load all AI agents from database (for initialization)
    */
   async loadAgents(): Promise<AIAgent[]> {
-    const agents = await findAllAIAgents();
-
-    // Restore event queues from database
-    for (const agent of agents) {
-      try {
-        // Check if new field exists (will after migration)
-        const agentRecord: Record<string, unknown> = agent;
-        const eventQueueJson = agentRecord['eventQueueJson'];
-
-        if (typeof eventQueueJson === 'string') {
-          const storedEvents: unknown = JSON.parse(eventQueueJson);
-          if (Array.isArray(storedEvents)) {
-            // Filter to events with required fields, TypeScript will accept this
-            const validEvents = storedEvents.filter(
-              (e): e is GameEvent =>
-                e !== null &&
-                typeof e === 'object' &&
-                'id' in e &&
-                'type' in e &&
-                'timestamp' in e &&
-                'originRoomId' in e &&
-                'visibility' in e,
-            );
-            this.agentEventQueues.set(agent.characterId, validEvents);
-          }
-        }
-      } catch (error) {
-        console.error(`Failed to restore event queue for agent ${agent.id}:`, error);
-      }
-    }
-
+    const { agents, queues } = await loadAgentsWithQueues();
+    this.agentEventQueues = queues;
     return agents;
   }
 
@@ -70,20 +48,7 @@ export class AIAgentManager {
    * Save event queues to database (called periodically or on shutdown)
    */
   async saveEventQueuesToDatabase(): Promise<void> {
-    for (const [characterId, queue] of this.agentEventQueues.entries()) {
-      try {
-        const agents = await findAllAIAgents();
-        const agent = agents.find((a) => a.characterId === characterId);
-        if (agent) {
-          const updates: Record<string, unknown> = {
-            eventQueueJson: JSON.stringify(queue),
-          };
-          await updateAIAgent(agent.id, updates);
-        }
-      } catch (error) {
-        console.error(`Failed to save event queue for character ${characterId}:`, error);
-      }
-    }
+    await saveEventQueues(this.agentEventQueues);
   }
 
   /**
@@ -91,95 +56,63 @@ export class AIAgentManager {
    * Should be called on server startup (non-blocking)
    */
   async initializeSpatialMemory(): Promise<void> {
-    console.info('🗺️  Initializing spatial memory for AI agents (background task)...');
-    const agents = await findAllAIAgents();
-
-    for (const agent of agents) {
-      const character = await findCharacterById(agent.characterId);
-      if (!character) {
-        console.warn(`⚠️  Character not found for agent ${agent.id}`);
-        continue;
-      }
-
-      try {
-        // Check if spatial memory needs refresh (older than 24 hours)
-        const hoursSinceUpdate =
-          (Date.now() - agent.spatialMemoryUpdatedAt.getTime()) / (1000 * 60 * 60);
-
-        if (!agent.spatialMemory || hoursSinceUpdate > 24) {
-          console.info(`   🔄 ${character.name}: Generating spatial memory...`);
-          const spatialMemory = await refreshAgentSpatialMemory(
-            this.aiService,
-            agent,
-            character.name,
-          );
-
-          await updateAIAgent(agent.id, {
-            spatialMemory,
-            spatialMemoryUpdatedAt: new Date(),
-          });
-
-          console.info(`   ✓ ${character.name}: Spatial memory ready`);
-        } else {
-          console.info(`   ✓ ${character.name}: Spatial memory up to date (cached)`);
-        }
-      } catch (error) {
-        console.error(`   ✗ ${character.name}: Failed to initialize spatial memory:`, error);
-        console.error(`      Agent will function without spatial memory (cannot give directions)`);
-      }
-    }
-
-    console.info('✅ Spatial memory initialization complete\n');
+    return initializeSpatialMemory(this.aiService);
   }
 
   /**
-   * Start proactive behavior loop
+   * Game System Tick
+   * Replaces the old interval-based loop
    */
-  startProactiveLoop(): void {
-    if (this.proactiveLoopTimer) return; // Already running
+  onTick(context: TickContext): void {
+    if (!this.isRunning) return;
 
-    // Check all agents every 10 seconds
-    this.proactiveLoopTimer = setInterval(() => {
+    this.proactiveTimer += context.deltaTime;
+    this.saveTimer += context.deltaTime;
+
+    // Run AI logic every 10 seconds
+    if (this.proactiveTimer >= 10) {
+      this.proactiveTimer = 0;
       this.processProactiveActions().catch((error) => {
         console.error('Error in proactive AI loop:', error);
       });
-    }, 10000);
+    }
 
     // Save event queues every 30 seconds
-    setInterval(() => {
+    if (this.saveTimer >= 30) {
+      this.saveTimer = 0;
       this.saveEventQueuesToDatabase().catch((error) => {
         console.error('Error saving event queues:', error);
       });
-    }, 30000);
-
-    console.info('🤖 AI proactive behavior loop started');
-  }
-
-  /**
-   * Pause proactive behavior loop
-   */
-  pauseProactiveLoop(): void {
-    if (this.proactiveLoopTimer) {
-      clearInterval(this.proactiveLoopTimer);
-      this.proactiveLoopTimer = undefined;
     }
   }
 
   /**
-   * Resume proactive behavior loop
+   * Enable proactive behavior
+   */
+  startProactiveLoop(): void {
+    this.isRunning = true;
+    console.info('🤖 AI proactive behavior loop enabled');
+  }
+
+  /**
+   * Disable proactive behavior
+   */
+  pauseProactiveLoop(): void {
+    this.isRunning = false;
+  }
+
+  /**
+   * Resume proactive behavior
    */
   resumeProactiveLoop(): void {
     this.startProactiveLoop();
   }
 
   /**
-   * Stop proactive behavior loop
+   * Stop proactive behavior
    */
   stopProactiveLoop(): void {
-    if (this.proactiveLoopTimer !== undefined) {
-      clearInterval(this.proactiveLoopTimer);
-    }
-    this.proactiveLoopTimer = undefined;
+    this.isRunning = false;
   }
 
   /**

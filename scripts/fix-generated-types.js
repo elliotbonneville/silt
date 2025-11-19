@@ -16,13 +16,19 @@ try {
   // Only add if not already present
   if (!content.startsWith('// @ts-nocheck')) {
     content = `// @ts-nocheck - Auto-generated file by zod-prisma-types\n${content}`;
-    writeFileSync(generatedFile, content, 'utf-8');
-    // biome-ignore lint/suspicious/noConsole: Build script output
-    console.log('✅ Added @ts-nocheck to generated types');
-  } else {
-    // biome-ignore lint/suspicious/noConsole: Build script output
-    console.log('✅ Generated types already have @ts-nocheck');
   }
+
+  // Fix unused Prisma import if present
+  if (content.includes("import type { Prisma } from '@prisma/client';")) {
+    content = content.replace(
+      "import type { Prisma } from '@prisma/client';",
+      "// import type { Prisma } from '@prisma/client';",
+    );
+  }
+
+  writeFileSync(generatedFile, content, 'utf-8');
+  // biome-ignore lint/suspicious/noConsole: Build script output
+  console.log('✅ Fixed generated types (added @ts-nocheck and commented unused imports)');
 } catch (error) {
   console.error('Failed to fix generated types:', error);
   process.exit(1);

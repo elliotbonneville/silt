@@ -3,18 +3,13 @@
  * Manages world state, actors, and event propagation
  */
 
-import type { AIAgent, Character } from '@prisma/client';
+import type { Character } from '@prisma/client';
 import type { CharacterListItem, RoomState } from '@silt/shared';
 import type { Server } from 'socket.io';
-import {
-  findCharacterById,
-  findCharactersInRoom,
-  updateCharacter,
-} from '../database/character-repository.js';
+import { findCharacterById, updateCharacter } from '../database/character-repository.js';
 import { getGameState, updateGameState } from '../database/game-state-repository.js';
 import { createPlayerLog } from '../database/player-log-repository.js';
-import { findRoomById } from '../database/room-repository.js';
-import type { AIAction } from './ai/index.js';
+import { setupAdminHandlers } from './admin-handler.js';
 import { AIService } from './ai/index.js';
 import { AIAgentManager } from './ai-agent-manager.js';
 import { aiDebugLogger } from './ai-debug-logger.js';
@@ -23,7 +18,9 @@ import { CommandHandler } from './command-handler.js';
 import { type CommandContext, parseAndExecuteCommand } from './commands.js';
 import { ConnectionHandler } from './connection-handler.js';
 import { EventPropagator } from './event-propagator.js';
-import { transformRoom } from './room-formatter.js';
+import { CommandQueue, type QueuedCommand } from './systems/command-queue.js';
+import { GameLoop } from './systems/game-loop.js';
+import { WorldClock } from './systems/world-clock.js';
 
 export class GameEngine {
   readonly characterManager: CharacterManager;
@@ -31,11 +28,17 @@ export class GameEngine {
   private eventPropagator!: EventPropagator;
   private commandHandler!: CommandHandler;
   private connectionHandler!: ConnectionHandler;
+  private readonly gameLoop: GameLoop;
+  private readonly worldClock: WorldClock;
+  private readonly commandQueue: CommandQueue;
   private initialized = false;
   private paused = false;
 
   constructor(private readonly io: Server) {
     this.characterManager = new CharacterManager(this.io);
+    this.gameLoop = new GameLoop();
+    this.worldClock = new WorldClock();
+    this.commandQueue = new CommandQueue(this.processQueuedCommand.bind(this));
 
     // Initialize AI service
     const apiKey = process.env['OPENAI_API_KEY'];
@@ -47,10 +50,23 @@ export class GameEngine {
     this.aiAgentManager = new AIAgentManager(
       aiService,
       async (id: string) => await findCharacterById(id),
-      async (agent, character, action) => {
-        await this.executeAIAction(agent, character, action);
+      async (_agent, character, action) => {
+        // Enqueue AI actions instead of executing immediately
+        const commandText = this.aiAgentManager.buildCommandFromAction(action);
+        this.commandQueue.enqueue({
+          type: 'ai',
+          actorId: character.id,
+          commandText,
+          originalTimestamp: Date.now(),
+        });
       },
     );
+
+    // Register game systems
+    this.gameLoop.addSystem(this.worldClock);
+    this.gameLoop.addSystem(this.commandQueue);
+    this.gameLoop.addSystem(this.aiAgentManager);
+
     console.info('🤖 AI Service: OpenAI API ready');
   }
 
@@ -63,8 +79,13 @@ export class GameEngine {
     // Load game state (pause status, etc.)
     const gameState = await getGameState();
     this.paused = gameState.isPaused;
+    if (gameState.gameTime) {
+      this.worldClock.setGameTime(Number(gameState.gameTime));
+    }
+
     if (this.paused) {
       console.info('⏸️  Game engine starting in PAUSED state');
+      this.worldClock.pause();
     }
 
     // Load AI agents
@@ -73,6 +94,7 @@ export class GameEngine {
 
     // Initialize event propagator
     this.eventPropagator = new EventPropagator(this.characterManager, this.aiAgentManager, this.io);
+    this.gameLoop.addSystem(this.eventPropagator);
 
     // Initialize command handler
     this.commandHandler = new CommandHandler(this.characterManager, this.eventPropagator);
@@ -87,12 +109,14 @@ export class GameEngine {
     aiDebugLogger.setEventPropagator(this.eventPropagator);
 
     // Set up admin socket handlers
-    this.setupAdminHandlers();
+    setupAdminHandlers(this.io);
 
-    // Start AI proactive behavior loop (only if not paused)
     if (!this.paused) {
       this.aiAgentManager.startProactiveLoop();
     }
+
+    // Start game loop (always runs to process commands, even if simulation is paused)
+    this.gameLoop.start();
 
     // Initialize spatial memory in background (don't block startup)
     this.aiAgentManager
@@ -100,23 +124,6 @@ export class GameEngine {
       .catch((error) => console.error('Failed to initialize spatial memory:', error));
 
     this.initialized = true;
-  }
-
-  /**
-   * Set up admin socket event handlers
-   */
-  private setupAdminHandlers(): void {
-    this.io.on('connection', (socket) => {
-      socket.on('admin:join', () => {
-        socket.join('admin');
-        console.info(`Admin client connected: ${socket.id}`);
-      });
-
-      socket.on('admin:leave', () => {
-        socket.leave('admin');
-        console.info(`Admin client disconnected: ${socket.id}`);
-      });
-    });
   }
 
   /**
@@ -151,32 +158,68 @@ export class GameEngine {
 
   /**
    * Handle a command from a player
+   * Enqueues command for processing in the next game tick
    */
   async handleCommand(socketId: string, commandText: string): Promise<void> {
-    const character = await this.characterManager.getCharacterBySocketId(socketId);
-    if (!character) {
-      throw new Error('Character not found');
+    this.commandQueue.enqueue({
+      type: 'player',
+      actorId: socketId,
+      commandText,
+      originalTimestamp: Date.now(),
+    });
+  }
+
+  /**
+   * Process a queued command (Internal logic)
+   * Runs inside the game loop tick
+   */
+  private async processQueuedCommand(cmd: QueuedCommand): Promise<void> {
+    let character: Character | null = null;
+
+    // Resolve character based on command type
+    if (cmd.type === 'player') {
+      character = await this.characterManager.getCharacterBySocketId(cmd.actorId);
+    } else {
+      character = await findCharacterById(cmd.actorId);
     }
+
+    if (!character) {
+      console.warn(`Could not find character for ${cmd.type} command: ${cmd.actorId}`);
+      return;
+    }
+
+    // Determine socketId for output (if player)
+    const socketId =
+      cmd.type === 'player' ? this.characterManager.getSocketIdForCharacter(character.id) : null;
 
     const context: CommandContext = {
       character,
     };
 
-    // Persist command
-    await createPlayerLog(character.id, 'command', commandText);
+    // Persist command log
+    await createPlayerLog(character.id, 'command', cmd.commandText);
 
-    const result = await parseAndExecuteCommand(commandText, context);
+    const result = await parseAndExecuteCommand(cmd.commandText, context);
 
     if (!result.success && result.error) {
-      this.io.to(socketId).emit('game:error', { message: result.error });
+      // Send error to player
+      if (socketId) {
+        this.io.to(socketId).emit('game:error', { message: result.error });
+      }
       // Persist error
       await createPlayerLog(character.id, 'output', { type: 'error', message: result.error });
       return;
     }
 
-    // Send structured output to command issuer (look, inventory, etc.)
+    // Send structured output
     if (result.output) {
-      this.io.to(socketId).emit('game:output', result.output);
+      if (socketId) {
+        // Send to player
+        this.io.to(socketId).emit('game:output', result.output);
+      } else {
+        // Queue for AI
+        this.aiAgentManager.queueOutputForAgent(character.id, result.output);
+      }
       // Persist output
       await createPlayerLog(character.id, 'output', result.output);
     }
@@ -208,66 +251,7 @@ export class GameEngine {
    * Get room state for a character
    */
   async getCharacterRoomState(characterId: string): Promise<RoomState> {
-    const character = await findCharacterById(characterId);
-    if (!character) throw new Error('Character not found');
-
-    const dbRoom = await findRoomById(character.currentRoomId);
-    if (!dbRoom) throw new Error('Room not found');
-    const room = transformRoom(dbRoom);
-
-    const charactersInRoom = await findCharactersInRoom(character.currentRoomId);
-    const occupants = charactersInRoom
-      .filter((char) => char.id !== characterId)
-      .map((char) => ({ id: char.id, name: char.name, type: 'player' as const }));
-
-    const exitEntries = Array.from(room.exits.entries());
-    const exits = await Promise.all(
-      exitEntries.map(async ([direction, targetId]) => {
-        const targetDbRoom = await findRoomById(targetId);
-        return {
-          direction,
-          roomId: targetId,
-          roomName: targetDbRoom?.name || 'Unknown',
-        };
-      }),
-    );
-
-    return {
-      room: { id: room.id, name: room.name, description: room.description },
-      exits,
-      occupants,
-      items: [],
-    };
-  }
-
-  /**
-   * Execute an AI-decided action
-   */
-  private async executeAIAction(
-    _agent: AIAgent,
-    character: Character,
-    action: AIAction,
-  ): Promise<void> {
-    const commandString = this.aiAgentManager.buildCommandFromAction(action);
-
-    const context: CommandContext = {
-      character,
-    };
-
-    const result = await parseAndExecuteCommand(commandString, context);
-
-    // Queue output for AI agent (so they see room descriptions, inventory, etc.)
-    if (result.output) {
-      this.aiAgentManager.queueOutputForAgent(character.id, result.output);
-    }
-
-    // Handle movement - persist character position to database
-    const moveEvent = result.events.find((e) => e.type === 'movement');
-    if (moveEvent?.data && this.isMovementData(moveEvent.data)) {
-      await updateCharacter(character.id, { currentRoomId: moveEvent.data.toRoomId });
-    }
-
-    await this.commandHandler.processResults(result, character);
+    return this.characterManager.getCharacterRoomState(characterId);
   }
 
   /**
@@ -277,6 +261,7 @@ export class GameEngine {
     if (!this.paused) {
       this.paused = true;
       this.aiAgentManager.pauseProactiveLoop();
+      this.worldClock.pause();
       await updateGameState({ isPaused: true });
       console.info('⏸️  Game engine paused');
     }
@@ -289,6 +274,7 @@ export class GameEngine {
     if (this.paused) {
       this.paused = false;
       this.aiAgentManager.resumeProactiveLoop();
+      this.worldClock.resume();
       await updateGameState({ isPaused: false });
       console.info('▶️  Game engine resumed');
     }

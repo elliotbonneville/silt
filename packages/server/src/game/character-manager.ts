@@ -3,7 +3,7 @@
  */
 
 import type { Character } from '@prisma/client';
-import type { CharacterListItem } from '@silt/shared';
+import type { CharacterListItem, RoomState } from '@silt/shared';
 import type { Server } from 'socket.io';
 import { prisma } from '../database/client.js';
 import {
@@ -11,10 +11,13 @@ import {
   deleteCharacter,
   findCharacterById,
   findCharactersByAccountId,
+  findCharactersInRoom,
   findOrCreateAccount,
 } from '../database/index.js';
 import { getDefaultSpawnPointId } from '../database/item-repository.js';
+import { findRoomById } from '../database/room-repository.js';
 import { createPlayerSession, type PlayerSession } from './player.js';
+import { transformRoom } from './room-formatter.js';
 
 export class CharacterManager {
   private readonly playerSessions = new Map<string, PlayerSession>();
@@ -131,6 +134,42 @@ export class CharacterManager {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Get room state for a character
+   */
+  async getCharacterRoomState(characterId: string): Promise<RoomState> {
+    const character = await findCharacterById(characterId);
+    if (!character) throw new Error('Character not found');
+
+    const dbRoom = await findRoomById(character.currentRoomId);
+    if (!dbRoom) throw new Error('Room not found');
+    const room = transformRoom(dbRoom);
+
+    const charactersInRoom = await findCharactersInRoom(character.currentRoomId);
+    const occupants = charactersInRoom
+      .filter((char) => char.id !== characterId)
+      .map((char) => ({ id: char.id, name: char.name, type: 'player' as const }));
+
+    const exitEntries = Array.from(room.exits.entries());
+    const exits = await Promise.all(
+      exitEntries.map(async ([direction, targetId]) => {
+        const targetDbRoom = await findRoomById(targetId);
+        return {
+          direction,
+          roomId: targetId,
+          roomName: targetDbRoom?.name || 'Unknown',
+        };
+      }),
+    );
+
+    return {
+      room: { id: room.id, name: room.name, description: room.description },
+      exits,
+      occupants,
+      items: [],
+    };
   }
 
   /**
