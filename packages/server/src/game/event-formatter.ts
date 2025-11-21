@@ -4,6 +4,20 @@
  */
 
 import type { GameEvent } from '@silt/shared';
+import { formatCombatHit, formatCombatStart, formatDeath } from './formatters/combat-formatters.js';
+import { formatItemDrop, formatItemPickup } from './formatters/item-formatters.js';
+import {
+  formatMovement,
+  formatPlayerEntered,
+  formatPlayerLeft,
+} from './formatters/movement-formatters.js';
+import {
+  formatEmote,
+  formatShout,
+  formatSpeech,
+  formatTell,
+  formatWhisper,
+} from './formatters/social-formatters.js';
 
 /**
  * Format event content for a specific viewer (actor)
@@ -14,6 +28,7 @@ export function formatEventContent(
   event: GameEvent,
   viewerActorId?: string,
   viewerRoomId?: string,
+  isListening = false,
 ): string {
   const data = event.data;
   if (!data) {
@@ -27,219 +42,44 @@ export function formatEventContent(
   const isYou = !isOmniscient && typeof actorId === 'string' && actorId === viewerActorId;
 
   switch (event.type) {
-    case 'speech': {
-      const speaker = data['actorName'];
-      const message = data['message'];
-      if (typeof speaker !== 'string' || typeof message !== 'string') {
-        return event.content || (isOmniscient ? event.type : 'Someone says something.');
-      }
-      return isYou ? `You say: "${message}"` : `${speaker} says: "${message}"`;
-    }
+    case 'speech':
+      return formatSpeech(data, isYou, isOmniscient);
 
-    case 'shout': {
-      const speaker = data['actorName'];
-      const message = data['message'];
-      const shoutOriginRoom = event.originRoomId;
+    case 'tell':
+      return formatTell(data, isYou, isOmniscient, viewerActorId, isListening);
 
-      if (typeof speaker !== 'string' || typeof message !== 'string') {
-        return event.content || (isOmniscient ? event.type : 'Someone shouts something.');
-      }
+    case 'whisper':
+      return formatWhisper(data, isYou, isOmniscient, viewerActorId);
 
-      if (isOmniscient) {
-        return `${speaker} shouts: "${message}"`;
-      }
+    case 'shout':
+      return formatShout(data, isYou, isOmniscient, event, viewerRoomId);
 
-      if (isYou) {
-        return `You shout: "${message}"`;
-      }
+    case 'emote':
+      return formatEmote(data, isYou, isOmniscient);
 
-      // Add directional context if viewer is in different room
-      if (viewerRoomId && shoutOriginRoom && viewerRoomId !== shoutOriginRoom) {
-        // TODO: Calculate direction from viewerRoomId to shoutOriginRoom
-        // For now, just indicate it's from elsewhere
-        return `${speaker} shouts from somewhere: "${message}"`;
-      }
+    case 'movement':
+      return formatMovement(data, isYou, isOmniscient, viewerRoomId);
 
-      return `${speaker} shouts: "${message}"`;
-    }
+    case 'combat_start':
+      return formatCombatStart(data, isOmniscient);
 
-    case 'emote': {
-      const actor = data['actorName'];
-      const action = data['action'];
-      if (typeof actor !== 'string' || typeof action !== 'string') {
-        return event.content || (isOmniscient ? event.type : 'Someone does something.');
-      }
-      return isYou ? `You ${action}` : `${actor} ${action}`;
-    }
+    case 'combat_hit':
+      return formatCombatHit(data, isYou, isOmniscient, viewerActorId);
 
-    case 'movement': {
-      const actor = data['actorName'];
-      const direction = data['direction'];
-      const toRoomId = data['toRoomId'];
-      const fromRoomId = data['fromRoomId'];
+    case 'item_pickup':
+      return formatItemPickup(data, isYou, isOmniscient);
 
-      if (typeof actor !== 'string' || typeof direction !== 'string') {
-        return event.content || (isOmniscient ? event.type : 'Someone moves.');
-      }
+    case 'item_drop':
+      return formatItemDrop(data, isYou, isOmniscient);
 
-      // Omniscient perspective - just report the movement
-      if (isOmniscient) {
-        return `${actor} moves ${direction}`;
-      }
+    case 'player_entered':
+      return formatPlayerEntered(data, isOmniscient);
 
-      // Determine if viewer is in destination or source room
-      const viewerInDestination =
-        viewerRoomId && typeof toRoomId === 'string' && viewerRoomId === toRoomId;
-      const viewerInSource =
-        viewerRoomId && typeof fromRoomId === 'string' && viewerRoomId === fromRoomId;
+    case 'player_left':
+      return formatPlayerLeft(data, isOmniscient);
 
-      // If viewer is the one moving, only show departure message (no arrival message)
-      if (isYou) {
-        if (viewerInSource) {
-          return `You move ${direction}.`;
-        }
-        // If we're the mover and in destination room, don't show a message
-        // (the room description is already shown as output)
-        return '';
-      }
-
-      // Viewer is someone else watching the movement
-      if (viewerInDestination) {
-        // Viewer is in destination room - show arrival message
-        const oppositeDirection: Record<string, string> = {
-          north: 'south',
-          south: 'north',
-          east: 'west',
-          west: 'east',
-          northeast: 'southwest',
-          southwest: 'northeast',
-          northwest: 'southeast',
-          southeast: 'northwest',
-          up: 'below',
-          down: 'above',
-        };
-        const fromDir = oppositeDirection[direction.toLowerCase()];
-        return fromDir
-          ? `${actor} arrives from the ${fromDir}.`
-          : `${actor} arrives from somewhere.`;
-      }
-
-      if (viewerInSource) {
-        // Viewer is in source room - show departure message
-        return `${actor} moves ${direction}.`;
-      }
-
-      // Fallback (shouldn't happen if viewerRoomId is provided correctly)
-      return `${actor} moves ${direction}.`;
-    }
-
-    case 'combat_start': {
-      const attacker = data['actorName'];
-      const target = data['targetName'];
-      const message = data['message'];
-
-      if (
-        typeof attacker !== 'string' ||
-        typeof target !== 'string' ||
-        typeof message !== 'string'
-      ) {
-        return event.content || (isOmniscient ? event.type : 'Combat has started.');
-      }
-
-      return isOmniscient ? `${attacker} started fighting ${target}` : message;
-    }
-
-    case 'combat_hit': {
-      const attacker = data['actorName'];
-      const target = data['targetName'];
-      const targetId = data['targetId'];
-      const damage = data['damage'];
-      const targetHp = data['targetHp'];
-      const targetMaxHp = data['targetMaxHp'];
-
-      if (
-        typeof attacker !== 'string' ||
-        typeof target !== 'string' ||
-        typeof damage !== 'number' ||
-        typeof targetHp !== 'number' ||
-        typeof targetMaxHp !== 'number'
-      ) {
-        return event.content || (isOmniscient ? event.type : 'Someone attacks someone.');
-      }
-
-      if (isOmniscient) {
-        return `${attacker} attacks ${target} for ${damage} damage`;
-      }
-
-      const isAttacker = isYou;
-      const isTarget = typeof targetId === 'string' && targetId === viewerActorId;
-
-      if (isAttacker) {
-        return `You attack ${target} for ${damage} damage! (${targetHp}/${targetMaxHp} HP)`;
-      }
-      if (isTarget) {
-        return `${attacker} attacks you for ${damage} damage! (${targetHp}/${targetMaxHp} HP)`;
-      }
-      return `${attacker} attacks ${target} for ${damage} damage! (${targetHp}/${targetMaxHp} HP)`;
-    }
-
-    case 'item_pickup': {
-      const actor = data['actorName'];
-      const item = data['itemName'];
-      if (typeof actor !== 'string' || typeof item !== 'string') {
-        return event.content || (isOmniscient ? event.type : 'Someone takes something.');
-      }
-      if (isOmniscient) {
-        return `${actor} takes ${item}`;
-      }
-      return isYou ? `You take ${item}.` : `${actor} takes ${item}.`;
-    }
-
-    case 'item_drop': {
-      const actor = data['actorName'];
-      const item = data['itemName'];
-      if (typeof actor !== 'string' || typeof item !== 'string') {
-        return event.content || (isOmniscient ? event.type : 'Someone drops something.');
-      }
-      if (isOmniscient) {
-        return `${actor} drops ${item}`;
-      }
-      return isYou ? `You drop ${item}.` : `${actor} drops ${item}.`;
-    }
-
-    case 'player_entered': {
-      const player = data['actorName'];
-      if (typeof player !== 'string') {
-        return event.content || (isOmniscient ? event.type : 'Someone has entered the room.');
-      }
-      if (isOmniscient) {
-        return `${player} entered the room`;
-      }
-      return `${player} has entered the room.`;
-    }
-
-    case 'player_left': {
-      const player = data['actorName'];
-      if (typeof player !== 'string') {
-        return event.content || (isOmniscient ? event.type : 'Someone has left the room.');
-      }
-      if (isOmniscient) {
-        return `${player} left the room`;
-      }
-      return `${player} has left the room.`;
-    }
-
-    case 'death': {
-      const victim = data['victimName'];
-      const killer = data['killerName'];
-      if (typeof victim !== 'string' || typeof killer !== 'string') {
-        return event.content || (isOmniscient ? event.type : 'Someone has died.');
-      }
-      if (isOmniscient) {
-        return `💀 ${victim} was slain by ${killer}`;
-      }
-      return `💀 ${victim} has been slain by ${killer}!`;
-    }
+    case 'death':
+      return formatDeath(data, isOmniscient);
 
     case 'room_description':
     case 'system':

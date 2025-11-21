@@ -3,7 +3,7 @@
  * Only route that connects to WebSocket
  */
 
-import type { CharacterResponse, FormattingPreferences } from '@silt/shared';
+import type { CharacterResponse, EntityReference, FormattingPreferences } from '@silt/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { getPreferences, updatePreferences } from '../api/client.js';
@@ -21,6 +21,7 @@ export default function GameRoute(): JSX.Element {
   const [preferences, setPreferences] = useState<FormattingPreferences | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [contentWidth, setContentWidth] = useState<number | undefined>(undefined);
+  const [commandInput, setCommandInput] = useState('');
 
   // Load preferences from username in localStorage
   useEffect(() => {
@@ -88,6 +89,22 @@ export default function GameRoute(): JSX.Element {
     setPreferences(updated);
   };
 
+  const handleCommand = (command: string): void => {
+    if (!socket) return;
+    addOptimisticEvent(command);
+    socket.emit('game:command', { command });
+    setCommandInput(''); // Clear input on send
+  };
+
+  const handleEntityClick = (entity: EntityReference): void => {
+    // Append @id:ID to command input
+    setCommandInput((prev) => {
+      const prefix = prev.endsWith(' ') || prev.length === 0 ? '' : ' ';
+      // Use ID targeting for precision
+      return `${prev}${prefix}@id:${entity.id} `;
+    });
+  };
+
   // Wait for socket connection
   if (!isConnected) {
     return (
@@ -99,12 +116,6 @@ export default function GameRoute(): JSX.Element {
       </div>
     );
   }
-
-  const handleCommand = (command: string): void => {
-    if (!socket) return;
-    addOptimisticEvent(command);
-    socket.emit('game:command', { command });
-  };
 
   if (loading || !character) {
     return (
@@ -148,10 +159,13 @@ export default function GameRoute(): JSX.Element {
         currentCharacterId={character.id}
         preferences={preferences ?? undefined}
         onContentWidthChange={setContentWidth}
+        onEntityClick={handleEntityClick}
       />
 
       {/* Command input - fixed at bottom */}
       <CommandInput
+        value={commandInput}
+        onChange={setCommandInput}
         onCommand={handleCommand}
         disabled={!character}
         lineWidth={preferences?.lineWidth ?? 80}

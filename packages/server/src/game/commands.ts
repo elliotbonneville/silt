@@ -13,13 +13,19 @@ import {
   executeUnequipCommand,
 } from './inventory-commands.js';
 import { executeGoCommand, executeLookCommand } from './navigation-commands.js';
-import { executeExamineCommand } from './observation-commands.js';
-import { executeEmoteCommand, executeSayCommand, executeShoutCommand } from './social-commands.js';
-import type { CombatSystem } from './systems/combat-system.js';
+import { executeExamineCommand, executeListenCommand } from './observation-commands.js';
+import {
+  executeEmoteCommand,
+  executeSayCommand,
+  executeShoutCommand,
+  executeTellCommand,
+  executeWhisperCommand,
+} from './social-commands.js';
+import type { ICombatSystem } from './systems/combat-system.js';
 
 export interface CommandContext {
   readonly character: Character;
-  readonly combatSystem?: CombatSystem;
+  readonly combatSystem?: ICombatSystem;
 }
 
 export interface CommandResult {
@@ -80,6 +86,10 @@ export async function parseAndExecuteCommand(
     case 'l':
       return await executeLookCommand(ctx);
 
+    case 'listen':
+    case 'ls':
+      return await executeListenCommand(ctx, args.join(' '));
+
     case 'go':
     case 'move':
       if (args.length === 0) {
@@ -89,6 +99,14 @@ export async function parseAndExecuteCommand(
 
     case 'say':
       return executeSayCommand(ctx, args.join(' '));
+
+    case 'tell':
+    case 't':
+      return executeTellCommand(ctx, args.join(' '));
+
+    case 'whisper':
+    case 'w':
+      return executeWhisperCommand(ctx, args.join(' '));
 
     case 'shout':
       return executeShoutCommand(ctx, args.join(' '));

@@ -2,23 +2,31 @@
  * Speech and shout event renderer
  */
 
+import type { EntityReference } from '@silt/shared';
+import { RichText } from './RichText.js';
 import './events.css';
 
 interface SpeechEventProps {
   readonly content: string;
   readonly color: string;
+  readonly relatedEntities?: readonly EntityReference[] | undefined;
+  readonly onEntityClick?: ((entity: EntityReference) => void) | undefined;
 }
 
-export function SpeechEvent({ content, color }: SpeechEventProps): JSX.Element {
-  const lines = content.split('\n');
-
+export function SpeechEvent({
+  content,
+  color,
+  relatedEntities,
+  onEntityClick,
+}: SpeechEventProps): JSX.Element {
   return (
     <div className="event-container event-container--speech">
       <div className="speech-event" style={{ color }}>
-        {lines.map((line, idx) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: Lines are immutable parts of event content
-          <div key={`speech-${idx}`}>{line || '\u00A0'}</div>
-        ))}
+        <RichText
+          content={content}
+          relatedEntities={relatedEntities}
+          onEntityClick={onEntityClick}
+        />
       </div>
     </div>
   );

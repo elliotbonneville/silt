@@ -4,6 +4,7 @@
 
 import { findCharacterInRoom } from '../database/character-repository.js';
 import type { CommandContext, CommandResult } from './commands.js';
+import { listeningManager } from './listening-manager.js';
 import { executeGoCommand } from './navigation-commands.js';
 
 /**
@@ -18,6 +19,15 @@ export async function executeAttackCommand(
   }
 
   if (!targetName) return { success: false, events: [], error: 'Attack who?' };
+
+  // Check if listening - can't do both
+  if (listeningManager.getListeningTarget(ctx.character.id) !== undefined) {
+    return {
+      success: false,
+      events: [],
+      error: "You can't fight while trying to eavesdrop! Use 'stop' first.",
+    };
+  }
 
   const attacker = ctx.character;
   const target = await findCharacterInRoom(attacker.currentRoomId, targetName);
@@ -108,6 +118,23 @@ export async function executeStopCommand(ctx: CommandContext): Promise<CommandRe
   }
 
   const wasInCombat = ctx.combatSystem.stopCombat(ctx.character.id);
+  const wasListening = listeningManager.getListeningTarget(ctx.character.id) !== undefined;
+
+  if (wasListening) {
+    listeningManager.stopListening(ctx.character.id);
+  }
+
+  if (wasInCombat && wasListening) {
+    return {
+      success: true,
+      events: [],
+      output: {
+        type: 'system_message',
+        data: { message: 'You stop fighting and listening.' },
+        text: 'You stop fighting and listening.',
+      },
+    };
+  }
 
   if (wasInCombat) {
     return {
@@ -121,9 +148,21 @@ export async function executeStopCommand(ctx: CommandContext): Promise<CommandRe
     };
   }
 
+  if (wasListening) {
+    return {
+      success: true,
+      events: [],
+      output: {
+        type: 'system_message',
+        data: { message: 'You stop listening to conversations.' },
+        text: 'You stop listening to conversations.',
+      },
+    };
+  }
+
   return {
     success: false,
     events: [],
-    error: "You aren't fighting anyone.",
+    error: "You aren't fighting or listening to anyone.",
   };
 }

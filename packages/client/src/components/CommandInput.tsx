@@ -5,6 +5,8 @@
 import { type KeyboardEvent, useState } from 'react';
 
 interface CommandInputProps {
+  value: string;
+  onChange: (value: string) => void;
   onCommand: (command: string) => void;
   disabled?: boolean;
   lineWidth?: number;
@@ -13,24 +15,27 @@ interface CommandInputProps {
 }
 
 export function CommandInput({
+  value,
+  onChange,
   onCommand,
   disabled,
   lineWidth = 80,
   fontSize = 14,
   contentWidth,
 }: CommandInputProps): JSX.Element {
-  const [input, setInput] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isFocused, setIsFocused] = useState(false);
 
   const handleSubmit = (): void => {
-    if (!input.trim() || disabled) return;
+    if (!value.trim() || disabled) return;
 
-    onCommand(input);
-    setHistory((prev) => [...prev, input]);
+    onCommand(value);
+    setHistory((prev) => [...prev, value]);
     setHistoryIndex(-1);
-    setInput('');
+    // Parent should clear value via onChange, but we trigger onCommand
+    // Actually, usually onCommand clears it.
+    // We expect parent to clear it.
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
@@ -46,7 +51,7 @@ export function CommandInput({
       const newIndex = historyIndex + 1;
       if (newIndex < history.length) {
         setHistoryIndex(newIndex);
-        setInput(history[history.length - 1 - newIndex] || '');
+        onChange(history[history.length - 1 - newIndex] || '');
       }
       return;
     }
@@ -56,10 +61,10 @@ export function CommandInput({
       if (historyIndex > 0) {
         const newIndex = historyIndex - 1;
         setHistoryIndex(newIndex);
-        setInput(history[history.length - 1 - newIndex] || '');
+        onChange(history[history.length - 1 - newIndex] || '');
       } else {
         setHistoryIndex(-1);
-        setInput('');
+        onChange('');
       }
     }
   };
@@ -80,8 +85,8 @@ export function CommandInput({
         <span className="font-mono text-green-400 opacity-80">&gt;</span>
         <input
           type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
           // biome-ignore lint/a11y/noAutofocus: We want to autofocus the input

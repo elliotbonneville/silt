@@ -29,6 +29,7 @@ We're building a **living, multiplayer world** with AI agents, real-time combat,
 - **80% test coverage minimum** - 95% on critical paths (combat, AI, commands)
 - **Small commits** - 50-100 lines, one logical change
 - **Pre-commit validation** - All checks must pass: do not EVER commit with --no-verify
+- **Lint** - Apply lint fixes with biome --write before committing
 
 ---
 

@@ -3,6 +3,7 @@
  */
 
 import type { Character } from '@prisma/client';
+import { targetingSystem } from '../game/utils/targeting.js';
 import { prisma } from './client.js';
 
 export interface CreateCharacterInput {
@@ -158,17 +159,20 @@ export async function findAllCharacters(): Promise<Character[]> {
 }
 
 /**
- * Find character in a room by name
+ * Find character in a room by name using the targeting system
  */
-export async function findCharacterInRoom(roomId: string, name: string): Promise<Character | null> {
-  const nameLower = name.toLowerCase();
+export async function findCharacterInRoom(
+  roomId: string,
+  searchQuery: string,
+): Promise<Character | null> {
   const characters = await prisma.character.findMany({
     where: {
       currentRoomId: roomId,
       isAlive: true,
     },
   });
-  return characters.find((c) => c.name.toLowerCase() === nameLower) || null;
+
+  return targetingSystem.find(searchQuery, characters);
 }
 
 /**

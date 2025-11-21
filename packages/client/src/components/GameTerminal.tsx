@@ -2,7 +2,13 @@
  * Game terminal - displays game events in terminal-style interface
  */
 
-import type { FormattingPreferences, GameEvent, InventoryOutput, RoomOutput } from '@silt/shared';
+import type {
+  EntityReference,
+  FormattingPreferences,
+  GameEvent,
+  InventoryOutput,
+  RoomOutput,
+} from '@silt/shared';
 import { FONT_FAMILIES, THEME_PRESETS } from '@silt/shared';
 import { useEffect, useRef } from 'react';
 import {
@@ -18,9 +24,10 @@ import {
 
 interface GameTerminalProps {
   events: readonly GameEvent[];
-  currentCharacterId?: string;
+  currentCharacterId?: string | undefined;
   preferences?: FormattingPreferences | undefined;
-  onContentWidthChange?: (width: number) => void;
+  onContentWidthChange?: ((width: number) => void) | undefined;
+  onEntityClick?: ((entity: EntityReference) => void) | undefined;
 }
 
 export function GameTerminal({
@@ -28,6 +35,7 @@ export function GameTerminal({
   currentCharacterId,
   preferences,
   onContentWidthChange,
+  onEntityClick,
 }: GameTerminalProps): JSX.Element {
   const terminalRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -114,6 +122,7 @@ export function GameTerminal({
               structuredData={'structuredData' in event ? event.structuredData : undefined}
               textColor={colors.text}
               accentColor={colors.roomDescription}
+              onEntityClick={onEntityClick}
             />
           );
         })}
@@ -125,9 +134,10 @@ export function GameTerminal({
 interface EventLineProps {
   readonly event: GameEvent;
   readonly currentCharacterId: string | undefined;
-  readonly structuredData?: unknown; // For structured output rendering
+  readonly structuredData?: unknown | undefined; // For structured output rendering
   readonly textColor: string;
   readonly accentColor: string;
+  readonly onEntityClick?: ((entity: EntityReference) => void) | undefined;
 }
 
 // Type guards
@@ -151,7 +161,13 @@ function isInventoryOutput(data: unknown): data is InventoryOutput {
   );
 }
 
-function EventLine({ event, structuredData, textColor, accentColor }: EventLineProps): JSX.Element {
+function EventLine({
+  event,
+  structuredData,
+  textColor,
+  accentColor,
+  onEntityClick,
+}: EventLineProps): JSX.Element {
   // Handle optimistic updates (user commands)
   if (event.id.startsWith('optimistic-')) {
     // Render user commands in a lighter/different color for distinction
@@ -177,7 +193,12 @@ function EventLine({ event, structuredData, textColor, accentColor }: EventLineP
       isRoomOutput(structuredData)
     ) {
       return (
-        <RoomEvent roomData={structuredData.data} textColor={textColor} accentColor={accentColor} />
+        <RoomEvent
+          roomData={structuredData.data}
+          textColor={textColor}
+          accentColor={accentColor}
+          onEntityClick={onEntityClick}
+        />
       );
     }
 
@@ -193,32 +214,85 @@ function EventLine({ event, structuredData, textColor, accentColor }: EventLineP
 
   // Route to appropriate event component
   const content = event.content || '';
+  const relatedEntities = event.relatedEntities || [];
 
   switch (event.type) {
     case 'speech':
     case 'shout':
-      return <SpeechEvent content={content} color={textColor} />;
+    case 'tell':
+    case 'whisper':
+      return (
+        <SpeechEvent
+          content={content}
+          color={textColor}
+          relatedEntities={relatedEntities}
+          onEntityClick={onEntityClick}
+        />
+      );
 
     case 'movement':
     case 'player_entered':
     case 'player_left':
-      return <MovementEvent content={content} color={textColor} />;
+      return (
+        <MovementEvent
+          content={content}
+          color={textColor}
+          relatedEntities={relatedEntities}
+          onEntityClick={onEntityClick}
+        />
+      );
 
     case 'combat_hit':
     case 'combat_start':
-      return <CombatEvent content={content} color={accentColor} />;
+      return (
+        <CombatEvent
+          content={content}
+          color={accentColor}
+          relatedEntities={relatedEntities}
+          onEntityClick={onEntityClick}
+        />
+      );
 
     case 'death':
-      return <DeathEvent content={content} color={accentColor} />;
+      return (
+        <DeathEvent
+          content={content}
+          color={accentColor}
+          relatedEntities={relatedEntities}
+          onEntityClick={onEntityClick}
+        />
+      );
 
     case 'item_pickup':
     case 'item_drop':
-      return <ItemEvent content={content} color={textColor} />;
+      return (
+        <ItemEvent
+          content={content}
+          color={textColor}
+          relatedEntities={relatedEntities}
+          onEntityClick={onEntityClick}
+        />
+      );
 
     case 'ambient':
-      return <SystemEvent content={content} color={textColor} isAmbient={true} />;
+      return (
+        <SystemEvent
+          content={content}
+          color={textColor}
+          isAmbient={true}
+          relatedEntities={relatedEntities}
+          onEntityClick={onEntityClick}
+        />
+      );
 
     default:
-      return <SystemEvent content={content} color={textColor} />;
+      return (
+        <SystemEvent
+          content={content}
+          color={textColor}
+          relatedEntities={relatedEntities}
+          onEntityClick={onEntityClick}
+        />
+      );
   }
 }

@@ -3,6 +3,7 @@
  */
 
 import type { Item } from '@prisma/client';
+import { targetingSystem } from '../game/utils/targeting.js';
 import { prisma } from './client.js';
 import { type ItemStatsData, parseItemStats } from './schemas.js';
 
@@ -61,6 +62,17 @@ export async function findItemsInRoom(roomId: string): Promise<Item[]> {
     where: { roomId },
     orderBy: { name: 'asc' },
   });
+}
+
+/**
+ * Find item in a room using the targeting system
+ */
+export async function findItemInRoom(roomId: string, searchQuery: string): Promise<Item | null> {
+  const items = await prisma.item.findMany({
+    where: { roomId },
+  });
+
+  return targetingSystem.find(searchQuery, items);
 }
 
 /**

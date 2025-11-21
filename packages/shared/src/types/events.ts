@@ -27,6 +27,7 @@ export type GameEventType =
   | 'death'
   | 'speech'
   | 'whisper'
+  | 'tell'
   | 'shout'
   | 'emote'
   | 'item_pickup'
@@ -97,7 +98,7 @@ export interface SpeechEventData {
   readonly speakerId: string;
   readonly speakerName: string;
   readonly message: string;
-  readonly speechType: 'say' | 'whisper' | 'shout' | 'emote';
+  readonly speechType: 'say' | 'whisper' | 'shout' | 'emote' | 'tell';
 }
 
 /**

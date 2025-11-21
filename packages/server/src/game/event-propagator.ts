@@ -13,6 +13,7 @@ import type { AIAgentManager } from './ai-agent-manager.js';
 import type { CharacterManager } from './character-manager.js';
 import { getRoomsWithinDistance } from './event-distance.js';
 import { formatEventContent } from './event-formatter.js';
+import { listeningManager } from './listening-manager.js';
 
 import type { GameSystem, TickContext } from './systems/game-loop.js';
 
@@ -53,8 +54,19 @@ export class EventPropagator implements GameSystem {
    */
   async calculateAffectedActors(event: GameEvent): Promise<Map<string, GameEvent>> {
     const affected = new Map<string, GameEvent>();
-    const range = this.getEventRange(event.type);
 
+    // Handle private visibility (e.g. whispers)
+    if (event.visibility === 'private') {
+      if (event.data?.['actorId']) {
+        affected.set(String(event.data['actorId']), event);
+      }
+      if (event.data?.['targetId']) {
+        affected.set(String(event.data['targetId']), event);
+      }
+      return affected;
+    }
+
+    const range = this.getEventRange(event.type);
     const roomsInRange = await getRoomsWithinDistance(event.originRoomId, range);
 
     for (const [roomId, distance] of roomsInRange) {
@@ -178,12 +190,24 @@ export class EventPropagator implements GameSystem {
       const character = await findCharacterById(actorId);
       if (!character) continue;
 
+      // Check if listening to 'tell' conversation
+      let isListening = false;
+      if (event.type === 'tell') {
+        const senderId = String(event.data?.['actorId']);
+        const targetId = String(event.data?.['targetId']);
+        const listeningTarget = listeningManager.getListeningTarget(actorId);
+
+        if (listeningTarget && (listeningTarget === senderId || listeningTarget === targetId)) {
+          isListening = true;
+        }
+      }
+
       // Format content for this specific recipient, including their current room
       const formattedEvent: GameEvent = {
         ...attenuatedEvent,
         content:
           attenuatedEvent.content ||
-          formatEventContent(attenuatedEvent, actorId, character.currentRoomId),
+          formatEventContent(attenuatedEvent, actorId, character.currentRoomId, isListening),
       };
 
       // Filter out empty messages

@@ -1,13 +1,13 @@
 import type { Character, Item } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import * as charRepo from '../database/character-repository.js';
-import { CharacterSchema, ItemSchema } from '../database/generated/index.js';
-import * as itemRepo from '../database/item-repository.js';
-import type { CommandContext } from './commands.js';
-import { executeExamineCommand } from './observation-commands.js';
+import * as charRepo from '../../../database/character-repository.js';
+import { CharacterSchema, ItemSchema } from '../../../database/generated/index.js';
+import * as itemRepo from '../../../database/item-repository.js';
+import type { CommandContext } from '../../commands.js';
+import { executeExamineCommand } from '../../observation-commands.js';
 
-vi.mock('../database/item-repository.js');
-vi.mock('../database/character-repository.js');
+vi.mock('../../../database/item-repository.js');
+vi.mock('../../../database/character-repository.js');
 
 // Helper to create valid CUID-like strings for testing
 const createCuid = (suffix: string) => `cjld2cjxh0000qzrmn831${suffix.padEnd(4, '0')}`;

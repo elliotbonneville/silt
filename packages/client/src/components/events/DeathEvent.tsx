@@ -2,14 +2,23 @@
  * Death event renderer with special visual treatment
  */
 
+import type { EntityReference } from '@silt/shared';
+import { RichText } from './RichText.js';
 import './events.css';
 
 interface DeathEventProps {
   readonly content: string;
   readonly color: string;
+  readonly relatedEntities?: readonly EntityReference[] | undefined;
+  readonly onEntityClick?: ((entity: EntityReference) => void) | undefined;
 }
 
-export function DeathEvent({ content, color }: DeathEventProps): JSX.Element {
+export function DeathEvent({
+  content,
+  color,
+  relatedEntities,
+  onEntityClick,
+}: DeathEventProps): JSX.Element {
   const lines = content.split('\n');
 
   return (
@@ -24,7 +33,17 @@ export function DeathEvent({ content, color }: DeathEventProps): JSX.Element {
       >
         {lines.map((line, idx) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: Lines are immutable parts of event content
-          <div key={`death-${idx}`}>{line || '\u00A0'}</div>
+          <div key={`death-${idx}`}>
+            {line ? (
+              <RichText
+                content={line}
+                relatedEntities={relatedEntities}
+                onEntityClick={onEntityClick}
+              />
+            ) : (
+              '\u00A0'
+            )}
+          </div>
         ))}
       </div>
     </div>

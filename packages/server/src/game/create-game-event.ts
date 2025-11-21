@@ -3,7 +3,7 @@
  * Eliminates boilerplate and ensures consistent event creation
  */
 
-import type { EventVisibility, GameEvent, GameEventType } from '@silt/shared';
+import type { EntityReference, EventVisibility, GameEvent, GameEventType } from '@silt/shared';
 import { nanoid } from 'nanoid';
 
 /**
@@ -15,13 +15,14 @@ export function createEvent(
   originRoomId: string,
   visibility: EventVisibility,
   data: Record<string, unknown>,
+  relatedEntities: EntityReference[] = [],
 ): GameEvent {
   return {
     id: `event-${nanoid(10)}`,
     type,
     timestamp: Date.now(),
     originRoomId,
-    relatedEntities: [],
+    relatedEntities,
     visibility,
     data,
   };

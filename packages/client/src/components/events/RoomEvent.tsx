@@ -2,16 +2,23 @@
  * Room description event renderer
  */
 
-import type { RoomOutput } from '@silt/shared';
+import type { EntityReference, RoomOutput } from '@silt/shared';
+import { RichText } from './RichText.js';
 import './events.css';
 
 interface RoomEventProps {
   readonly roomData: RoomOutput['data'];
   readonly textColor: string;
   readonly accentColor: string;
+  readonly onEntityClick?: ((entity: EntityReference) => void) | undefined;
 }
 
-export function RoomEvent({ roomData, textColor, accentColor }: RoomEventProps): JSX.Element {
+export function RoomEvent({
+  roomData,
+  textColor,
+  accentColor,
+  onEntityClick,
+}: RoomEventProps): JSX.Element {
   return (
     <div className="event-container event-container--room">
       <div className="room-event">
@@ -56,7 +63,19 @@ export function RoomEvent({ roomData, textColor, accentColor }: RoomEventProps):
               Also here:{' '}
             </span>
             <span style={{ color: textColor, opacity: 0.85 }}>
-              {roomData.occupants.map((occupant) => occupant.name).join(', ')}
+              {onEntityClick ? (
+                <RichText
+                  content={roomData.occupants.map((occupant) => occupant.name).join(', ')}
+                  relatedEntities={roomData.occupants.map((occupant) => ({
+                    id: occupant.id,
+                    name: occupant.name,
+                    type: 'character' as const,
+                  }))}
+                  onEntityClick={onEntityClick}
+                />
+              ) : (
+                roomData.occupants.map((occupant) => occupant.name).join(', ')
+              )}
             </span>
           </div>
         )}
