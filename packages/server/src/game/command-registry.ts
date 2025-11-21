@@ -72,6 +72,22 @@ export const COMMAND_REGISTRY: readonly CommandDefinition[] = [
     aiUsable: true,
   },
   {
+    name: 'flee',
+    aliases: ['run', 'escape'],
+    description: 'Attempt to flee from combat to a random adjacent room',
+    usage: 'flee',
+    category: 'combat',
+    aiUsable: true,
+  },
+  {
+    name: 'stop',
+    aliases: [],
+    description: 'Stop attacking your current target',
+    usage: 'stop',
+    category: 'combat',
+    aiUsable: true,
+  },
+  {
     name: 'take',
     aliases: ['get', 'pickup'],
     description: 'Pick up an item from the room',

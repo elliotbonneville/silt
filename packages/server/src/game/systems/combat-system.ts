@@ -60,6 +60,7 @@ export class CombatSystem implements GameSystem {
         actorId: attacker.id,
         actorName: attacker.name,
         targetId: targetId,
+        targetName: target.name,
         message: `${attacker.name} attacks ${target.name}!`,
       }),
     );
@@ -68,8 +69,8 @@ export class CombatSystem implements GameSystem {
   /**
    * Stop combat for a character
    */
-  stopCombat(characterId: string): void {
-    this.combatants.delete(characterId);
+  stopCombat(characterId: string): boolean {
+    return this.combatants.delete(characterId);
   }
 
   /**

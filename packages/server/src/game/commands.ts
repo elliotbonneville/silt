@@ -4,7 +4,7 @@
 
 import type { Character } from '@prisma/client';
 import type { CommandOutput, GameEvent } from '@silt/shared';
-import { executeAttackCommand, executeFleeCommand } from './combat-commands.js';
+import { executeAttackCommand, executeFleeCommand, executeStopCommand } from './combat-commands.js';
 import {
   executeDropCommand,
   executeEquipCommand,
@@ -134,6 +134,9 @@ export async function parseAndExecuteCommand(
     case 'run':
     case 'escape':
       return await executeFleeCommand(ctx);
+
+    case 'stop':
+      return await executeStopCommand(ctx);
 
     default:
       return { success: false, events: [], error: `Unknown command: ${command}` };

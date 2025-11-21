@@ -133,6 +133,22 @@ export function formatEventContent(
       return `${actor} moves ${direction}.`;
     }
 
+    case 'combat_start': {
+      const attacker = data['actorName'];
+      const target = data['targetName'];
+      const message = data['message'];
+
+      if (
+        typeof attacker !== 'string' ||
+        typeof target !== 'string' ||
+        typeof message !== 'string'
+      ) {
+        return event.content || (isOmniscient ? event.type : 'Combat has started.');
+      }
+
+      return isOmniscient ? `${attacker} started fighting ${target}` : message;
+    }
+
     case 'combat_hit': {
       const attacker = data['actorName'];
       const target = data['targetName'];

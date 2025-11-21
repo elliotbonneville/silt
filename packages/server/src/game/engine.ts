@@ -76,7 +76,6 @@ export class GameEngine {
     this.gameLoop.addSystem(this.worldClock);
     this.gameLoop.addSystem(this.commandQueue);
     this.gameLoop.addSystem(this.aiAgentManager);
-
     console.info('🤖 AI Service: OpenAI API ready');
   }
 
@@ -91,6 +90,7 @@ export class GameEngine {
 
     if (this.paused) {
       console.info('⏸️  Game engine starting in PAUSED state');
+      this.worldClock.pause();
     }
 
     this.eventPropagator = new EventPropagator(this.characterManager, this.aiAgentManager, this.io);
@@ -98,6 +98,7 @@ export class GameEngine {
     this.commandHandler = new CommandHandler(this.characterManager, this.eventPropagator);
 
     this.gameLoop.addSystem(this.eventPropagator);
+    this.gameLoop.addSystem(this.combatSystem);
 
     this.commandProcessor = new CommandProcessor(
       this.io,
@@ -117,7 +118,8 @@ export class GameEngine {
 
     setupAdminHandlers(this.io);
 
-    await this.aiAgentManager.loadAgents();
+    const aiAgents = await this.aiAgentManager.loadAgents();
+    console.info(`✅ Loaded ${aiAgents.length} AI agents`);
 
     if (!this.paused) {
       this.aiAgentManager.startProactiveLoop();

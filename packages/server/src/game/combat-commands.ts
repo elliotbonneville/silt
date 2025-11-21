@@ -98,3 +98,32 @@ export async function executeFleeCommand(ctx: CommandContext): Promise<CommandRe
     },
   };
 }
+
+/**
+ * Execute the 'stop' command
+ */
+export async function executeStopCommand(ctx: CommandContext): Promise<CommandResult> {
+  if (!ctx.combatSystem) {
+    return { success: false, events: [], error: 'Combat system not available.' };
+  }
+
+  const wasInCombat = ctx.combatSystem.stopCombat(ctx.character.id);
+
+  if (wasInCombat) {
+    return {
+      success: true,
+      events: [],
+      output: {
+        type: 'system_message',
+        data: { message: 'You stop fighting.' },
+        text: 'You stop fighting.',
+      },
+    };
+  }
+
+  return {
+    success: false,
+    events: [],
+    error: "You aren't fighting anyone.",
+  };
+}
